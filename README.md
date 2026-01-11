@@ -92,3 +92,5 @@ The Vite dev server proxies `/api` to `http://localhost:3033` and supports hot r
 - Batch download uses the system `tar` binary to stream `.tar.gz` files.
 - Deletes move items into `/.trash`; restore requires the original parent path to exist.
 - Audit logs are written to `./audit.log` by default (override with `AUDIT_LOG_PATH`).
+
+Build with ❤️ from Jogja & Jetorbit
