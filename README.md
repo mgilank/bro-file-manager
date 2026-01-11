@@ -1,4 +1,4 @@
-# Tidy File Manager
+# Bro File Manager
 
 A small file manager inspired by tinyfilemanager, rebuilt with Bun + Hono + React. It ships with cookie-based auth, safe path resolution, and a tidy UI for browsing server folders.
 

@@ -2,7 +2,7 @@ import type { DateFilter, Theme } from "./types";
 import { parseEnvBoolean } from "./utils/env";
 
 export const API_BASE = "/api";
-export const BRAND_EYEBROW = import.meta.env.VITE_BRAND_EYEBROW ?? "Tidy File Manager";
+export const BRAND_EYEBROW = import.meta.env.VITE_BRAND_EYEBROW ?? "Bro File Manager";
 export const BRAND_TITLE = import.meta.env.VITE_BRAND_TITLE ?? "Storage Lens";
 export const BRAND_SUBTITLE =
   import.meta.env.VITE_BRAND_SUBTITLE ?? "Manage the server file tree with guarded access.";
@@ -10,7 +10,7 @@ export const SHORTCUTS_ENABLED = parseEnvBoolean(import.meta.env.VITE_SHORTCUTS_
 
 export const DEFAULT_THEME: Theme = "dawn";
 export const THEMES: Theme[] = ["dawn", "coast", "slate"];
-export const THEME_STORAGE_KEY = "tidy-filemanager-theme";
+export const THEME_STORAGE_KEY = "bro-file-manager-theme";
 
 export const FILE_TYPE_GROUPS = [
   { key: "image", exts: [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"] },

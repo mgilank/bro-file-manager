@@ -1,5 +1,5 @@
 {
-  "name": "tidy-filemanager",
+  "name": "bro-file-manager",
   "private": true,
   "type": "module",
   "scripts": {

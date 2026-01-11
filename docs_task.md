@@ -1,4 +1,4 @@
-# NAS File Manager Task Checklist (Prioritized)
+# Bro File Manager Task Checklist (Prioritized)
 
 This checklist reorganizes the existing feature list by execution priority. It starts with the smallest, easiest auth and a read-only baseline so the system works early, then expands into full NAS operations.
 
@@ -24,6 +24,7 @@ Current implementation notes:
 - Legacy single-user login uses username `admin` (or leave username blank).
 - Tailwind CSS pipeline is enabled (config via `@config`, preflight disabled, `tw` prefix to avoid style collisions).
 - From this point forward, UI work should prefer Tailwind utilities for new changes.
+- Branding updated to Bro File Manager.
 
 ## P0 - Easy auth + read-only baseline (function first)
 - [x] Authentication: local admin password
