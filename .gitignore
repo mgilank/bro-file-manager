@@ -3,3 +3,4 @@
 .git
 node_modules/
 docs_task.md
+audit.log

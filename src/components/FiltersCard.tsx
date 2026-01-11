@@ -157,7 +157,7 @@ export function FiltersCard({
               Reset Filters
             </button>
           </div>
-   
+          
         </div>
       </div>
     </div>
