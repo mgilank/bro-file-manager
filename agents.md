@@ -1,0 +1,4 @@
+- always test the code after modify
+- if the test fail, try to fix.
+- if test still fail, try other methode to fix
+- always update the task after modify
