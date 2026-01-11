@@ -1,0 +1,13 @@
+services:
+  bro-file-manager:
+    build: .
+    ports:
+      - "3033:3033"
+    environment:
+      PORT: 3033
+      FILE_ROOT: /data
+      ADMIN_PASSWORD: change-me
+      SESSION_SECRET: change-me
+    volumes:
+      - ./data:/data
+      - ./audit.log:/app/audit.log

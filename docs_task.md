@@ -25,6 +25,7 @@ Current implementation notes:
 - Tailwind CSS pipeline is enabled (config via `@config`, preflight disabled, `tw` prefix to avoid style collisions).
 - From this point forward, UI work should prefer Tailwind utilities for new changes.
 - Branding updated to Bro File Manager.
+- Deployment docs added for Docker and PM2.
 
 ## P0 - Easy auth + read-only baseline (function first)
 - [x] Authentication: local admin password

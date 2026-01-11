@@ -62,13 +62,13 @@ Password hash format is `scrypt$<base64 salt>$<base64 hash>`. You can generate o
 bun -e 'const { randomBytes, scryptSync } = require("crypto"); const salt = randomBytes(16); const hash = scryptSync(process.argv[1], salt, 32); console.log(`scrypt$${salt.toString("base64")}$${hash.toString("base64")}`);' "your-password"
 ```
 
-## Build the frontend
+## Build the frontend 👷🏻
 
 ```sh
 bun run build
 ```
 
-## Run
+## Run 🏃🏼‍♂️
 
 ```sh
 bun run start
@@ -85,6 +85,30 @@ bun run dev
 ```
 
 The Vite dev server proxies `/api` to `http://localhost:3033` and supports hot reload.
+
+## Deployment 🚀
+
+### Docker
+Build and run the container with Docker Compose:
+
+```sh
+docker compose up --build
+```
+
+The default compose file maps `3033:3033` and mounts `./data` into `/data` for `FILE_ROOT`.
+Update `docker-compose.yml` with your real secrets and paths, or override them with environment
+variables. If you use `USERS_FILE`, mount it into the container and set the path accordingly.
+
+### PM2
+Build the frontend once, then run the server with PM2:
+
+```sh
+bun run build
+pm2 start "bun run start" --name bro-file-manager
+pm2 save
+```
+
+Tip: run `pm2 startup` to auto-start on boot (follow the printed instructions).
 
 ## Notes
 - Symbolic links are skipped to avoid path escapes.
