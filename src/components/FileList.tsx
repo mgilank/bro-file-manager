@@ -1,5 +1,6 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { DragEvent } from "react";
-import type { Entry, TrashItem } from "../types";
+import type { Entry, SortMode, TrashItem } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
 import { FileIcon, FolderIcon } from "./icons";
 import { Pagination, type PaginationProps } from "./Pagination";
@@ -14,6 +15,8 @@ type FileListProps = {
   dragActive: boolean;
   actionLoading: boolean;
   canWrite: boolean;
+  sortMode: SortMode;
+  onSortModeChange: (value: SortMode) => void;
   pagination?: PaginationProps;
   showPaginationTop?: boolean;
   onToggleSelectAll: () => void;
@@ -35,6 +38,8 @@ export function FileList({
   dragActive,
   actionLoading,
   canWrite,
+  sortMode,
+  onSortModeChange,
   pagination,
   showPaginationTop = false,
   onToggleSelectAll,
@@ -45,6 +50,33 @@ export function FileList({
   onDragLeave,
   onDrop,
 }: FileListProps) {
+  const sortState = {
+    name: sortMode === "name-asc" ? "asc" : sortMode === "name-desc" ? "desc" : null,
+    size: sortMode === "size-asc" ? "asc" : sortMode === "size-desc" ? "desc" : null,
+    date: sortMode === "date-asc" ? "asc" : sortMode === "date-desc" ? "desc" : null,
+  } as const;
+  const handleSortToggle = (column: "name" | "size" | "date") => {
+    const nextMode =
+      column === "name"
+        ? sortState.name === "asc"
+          ? "name-desc"
+          : sortState.name === "desc"
+            ? "default"
+            : "name-asc"
+        : column === "size"
+          ? sortState.size === "asc"
+            ? "size-desc"
+            : sortState.size === "desc"
+              ? "default"
+              : "size-asc"
+          : sortState.date === "asc"
+            ? "date-desc"
+            : sortState.date === "desc"
+              ? "default"
+              : "date-asc";
+    onSortModeChange(nextMode);
+  };
+
   return (
     <div
       className={`card list ${dragActive ? "dragging" : ""}`}
@@ -95,9 +127,42 @@ export function FileList({
             <span>
               <input type="checkbox" checked={allSelected} onChange={onToggleSelectAll} />
             </span>
-            <span>Name</span>
-            <span>Size</span>
-            <span>Modified</span>
+            <button
+              type="button"
+              className={`sort-button${sortState.name ? " is-active" : ""}`}
+              onClick={() => handleSortToggle("name")}
+              aria-pressed={Boolean(sortState.name)}
+            >
+              Name
+              <span className={`sort-indicator${sortState.name ? ` ${sortState.name}` : ""}`}>
+                <ChevronUp className="sort-arrow sort-arrow-up" aria-hidden="true" />
+                <ChevronDown className="sort-arrow sort-arrow-down" aria-hidden="true" />
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`sort-button${sortState.size ? " is-active" : ""}`}
+              onClick={() => handleSortToggle("size")}
+              aria-pressed={Boolean(sortState.size)}
+            >
+              Size
+              <span className={`sort-indicator${sortState.size ? ` ${sortState.size}` : ""}`}>
+                <ChevronUp className="sort-arrow sort-arrow-up" aria-hidden="true" />
+                <ChevronDown className="sort-arrow sort-arrow-down" aria-hidden="true" />
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`sort-button${sortState.date ? " is-active" : ""}`}
+              onClick={() => handleSortToggle("date")}
+              aria-pressed={Boolean(sortState.date)}
+            >
+              Modified
+              <span className={`sort-indicator${sortState.date ? ` ${sortState.date}` : ""}`}>
+                <ChevronUp className="sort-arrow sort-arrow-up" aria-hidden="true" />
+                <ChevronDown className="sort-arrow sort-arrow-down" aria-hidden="true" />
+              </span>
+            </button>
           </div>
           {loading ? (
             <div className="empty">Loading directory...</div>

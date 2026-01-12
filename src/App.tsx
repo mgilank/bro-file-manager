@@ -1,3 +1,4 @@
+import { Home } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -9,8 +10,6 @@ import {
   type FormEvent,
 } from "react";
 
-import { ActionBar } from "./components/ActionBar";
-import { FiltersCard } from "./components/FiltersCard";
 import { Header } from "./components/Header";
 import { ImagePreviewModal } from "./components/ImagePreviewModal";
 import { LoginForm } from "./components/LoginForm";
@@ -809,11 +808,11 @@ export default function App() {
 
   const breadcrumbs = useMemo<Breadcrumb[]>(() => {
     if (path === "/") {
-      return [{ label: "root", path: "/" }];
+      return [{ label: "Home", path: "/" }];
     }
 
     const parts = path.split("/").filter(Boolean);
-    const crumbs: Breadcrumb[] = [{ label: "root", path: "/" }];
+    const crumbs: Breadcrumb[] = [{ label: "Home", path: "/" }];
     let current = "";
     for (const part of parts) {
       current = `${current}/${part}`;
@@ -821,6 +820,7 @@ export default function App() {
     }
     return crumbs;
   }, [path]);
+  const currentPathLabel = breadcrumbs[breadcrumbs.length - 1]?.label ?? "Home";
 
   const filtersActive =
     typeFilter !== "all" ||
@@ -829,16 +829,6 @@ export default function App() {
     dateFilter !== "any" ||
     sortMode !== "default" ||
     contentSearch;
-
-  const canTextPreview =
-    !!selected && selected.type === "file" && isTextPreviewableName(selected.name);
-  const canImagePreview =
-    !!selected && selected.type === "file" && isImagePreviewable(selected.name);
-
-  const downloadHref =
-    selected && selected.type === "file"
-      ? `${API_BASE}/download?path=${encodeURIComponent(joinPath(path, selected.name))}`
-      : null;
 
   useKeyboardShortcuts({
     enabled: SHORTCUTS_ENABLED,
@@ -880,8 +870,21 @@ export default function App() {
           username={username}
           userRole={userRole}
           theme={theme}
+          showTrash={showTrash}
+          filtersOpen={filtersOpen}
+          filtersActive={filtersActive}
+          typeFilter={typeFilter}
+          sizeMinMb={sizeMinMb}
+          sizeMaxMb={sizeMaxMb}
+          dateFilter={dateFilter}
           onThemeChange={setTheme}
           onLogout={handleLogout}
+          onToggleFilters={() => setFiltersOpen((prev) => !prev)}
+          onTypeFilterChange={setTypeFilter}
+          onSizeMinChange={setSizeMinMb}
+          onSizeMaxChange={setSizeMaxMb}
+          onDateFilterChange={setDateFilter}
+          onClearFilters={handleClearFilters}
         />
 
         {auth === "logged_out" ? (
@@ -895,33 +898,9 @@ export default function App() {
           />
         ) : (
           <div className="stack">
-            {!showTrash ? (
-              <FiltersCard
-                filtersOpen={filtersOpen}
-                filtersActive={filtersActive}
-                typeFilter={typeFilter}
-                sizeMinMb={sizeMinMb}
-                sizeMaxMb={sizeMaxMb}
-                dateFilter={dateFilter}
-                sortMode={sortMode}
-                contentSearch={contentSearch}
-                contentLoading={contentLoading}
-                contentMatches={contentMatches}
-                query={query}
-                onToggleOpen={() => setFiltersOpen((prev) => !prev)}
-                onTypeFilterChange={setTypeFilter}
-                onSizeMinChange={setSizeMinMb}
-                onSizeMaxChange={setSizeMaxMb}
-                onDateFilterChange={setDateFilter}
-                onSortModeChange={setSortMode}
-                onContentSearchChange={setContentSearch}
-                onClearFilters={handleClearFilters}
-              />
-            ) : null}
-
             <Toolbar
-              breadcrumbs={breadcrumbs}
               query={query}
+              currentPathLabel={currentPathLabel}
               onQueryChange={setQuery}
               onUp={() => parent && loadPath(parent)}
               onRefresh={() => loadPath(path)}
@@ -931,59 +910,68 @@ export default function App() {
               showTrash={showTrash}
               actionLoading={actionLoading}
               canWrite={canWrite}
+              selectionCount={selectionCount}
+              clipboardCount={clipboard?.length ?? 0}
+              archiveHref={archiveHref}
               parent={parent}
               fileInputRef={fileInputRef}
               onUploadChange={handleUploadChange}
-              onBreadcrumbClick={loadPath}
+              onCopy={handleCopy}
+              onPaste={handlePaste}
+              onRename={handleRename}
+              onMove={handleMove}
+              onArchiveClick={handleArchiveClick}
+              onDelete={handleDelete}
             />
 
-            {selectionCount > 0 ? (
-              <ActionBar
-                showTrash={showTrash}
-                selectionCount={selectionCount}
-                trashCount={trashItems.length}
-                clipboardCount={clipboard?.length ?? 0}
-                actionLoading={actionLoading}
-                canWrite={canWrite}
-                selected={selected}
-                previewLoading={previewLoading}
-                canTextPreview={canTextPreview}
-                canImagePreview={canImagePreview}
-                downloadHref={downloadHref}
-                archiveHref={archiveHref}
-                onCopy={handleCopy}
-                onPaste={handlePaste}
-                onRename={handleRename}
-                onMove={handleMove}
-                onArchiveClick={handleArchiveClick}
-                onDelete={handleDelete}
-                onPreview={handlePreview}
-                onImagePreview={handleImagePreview}
-              />
-            ) : null}
+            <div className=" py-2 px-1 flex items-center">
+              <div className="breadcrumbs">
+                <button
+                  type="button"
+                  className="crumb crumb-home"
+                  onClick={() => loadPath("/")}
+                  aria-label="Back to Home"
+                >
+                  <Home size={16} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+                {breadcrumbs.map((crumb, index) => (
+                  <button
+                    key={crumb.path}
+                    type="button"
+                    className="crumb"
+                    onClick={() => loadPath(crumb.path)}
+                  >
+                    {crumb.label}
+                    {index < breadcrumbs.length - 1 ? <span>/</span> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-              <FileList
-                showTrash={showTrash}
-                loading={loading}
-                trashItems={pagedTrashItems}
-                filtered={pagedEntries}
-                selectedNames={selectedNames}
-                allSelected={allSelected}
-                dragActive={dragActive}
-                actionLoading={actionLoading}
-                canWrite={canWrite}
-                pagination={{
-                  page,
-                  pageSize,
-                  totalItems,
-                  pageSizeOptions: PAGE_SIZE_OPTIONS,
-                  onPageChange: handlePageChange,
-                  onPageSizeChange: handlePageSizeChange,
-                }}
-                showPaginationTop
-                onToggleSelectAll={toggleSelectAll}
-                onToggleSelect={toggleSelect}
-                onEntryClick={handleEntryClick}
+            <FileList
+              showTrash={showTrash}
+              loading={loading}
+              trashItems={pagedTrashItems}
+              filtered={pagedEntries}
+              selectedNames={selectedNames}
+              allSelected={allSelected}
+              dragActive={dragActive}
+              actionLoading={actionLoading}
+              canWrite={canWrite}
+              sortMode={sortMode}
+              onSortModeChange={setSortMode}
+              pagination={{
+                page,
+                pageSize,
+                totalItems,
+                pageSizeOptions: PAGE_SIZE_OPTIONS,
+                onPageChange: handlePageChange,
+                onPageSizeChange: handlePageSizeChange,
+              }}
+              showPaginationTop
+              onToggleSelectAll={toggleSelectAll}
+              onToggleSelect={toggleSelect}
+              onEntryClick={handleEntryClick}
               onRestore={handleRestore}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}

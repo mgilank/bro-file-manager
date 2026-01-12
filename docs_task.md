@@ -22,7 +22,7 @@ Current implementation notes:
 - Frontend files live in the repo root (`index.html`, `src/`, `vite.config.ts`).
 - Default `FILE_ROOT` in `.env` is `.`; set it to your NAS share path in production.
 - Legacy single-user login uses username `admin` (or leave username blank).
-- Tailwind CSS pipeline is enabled (config via `@config`, preflight disabled, `tw` prefix to avoid style collisions).
+- Tailwind CSS pipeline is enabled (config via `@config`, sources via `@source`, theme import for color/shadow utilities).
 - From this point forward, UI work should prefer Tailwind utilities for new changes.
 - Branding updated to Bro File Manager.
 - Deployment docs added for Docker and PM2.
@@ -62,9 +62,22 @@ Current implementation notes:
 - [x] Keyboard shortcuts (configurable via env)
 - [x] Status toasts for actions
 - [x] Theming/branding (theme switcher in header)
-- [x] Sticky actions card with preview/download controls
+- [x] Selection actions integrated into the current path card and stick on scroll
 - [x] Collapsible filters panel (animated, custom expand/collapse icon)
-- [x] Actions card visible only when selection is active
+- [x] Toolbar actions swap to copy/paste/rename/move/zip/delete when selection is active
+- [x] Search input hides when items are selected
+- [x] Sort controls moved to list header arrows (removed from Filters card)
+- [x] Breadcrumbs moved between the toolbar card and the file list table
+- [x] Home icon button added to breadcrumbs to jump back to root
+- [x] Filters panel relocated under the theme chooser in the header
+- [x] Header filters spacing and controls compacted
+- [x] Header filters laid out in a single wide row on desktop
+- [x] Filters dropdown no longer pushes the table (header toggle panel)
+- [x] Reset filters buttons use icon-only control
+- [x] Logout button uses icon-only control
+- [x] Tailwind utilities use the default (unprefixed) class names
+- [x] Tailwind utilities load after custom styles to allow overrides
+- [x] Tailwind sources declared via `@source` and theme import enables color/shadow utilities
 - [x] Hover states for file/folder rows
 - [x] Filters card placed above the current path card
 - [x] Removed selection detail card
@@ -72,6 +85,7 @@ Current implementation notes:
 - [x] Action buttons use Lucide icons
 - [x] Toolbar buttons use Lucide icons
 - [x] Dropdown arrows aligned for filter and theme selects
+- [x] App favicon set to `favicon.jpeg`
 
 ## P4 - Search and indexing
 - [x] Filename search

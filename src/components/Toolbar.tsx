@@ -1,10 +1,20 @@
-import { ArrowUp, FolderPlus, RefreshCw, Trash2, Upload } from "lucide-react";
-import type { ChangeEvent, RefObject } from "react";
-import type { Breadcrumb } from "../types";
+import {
+  Archive,
+  ArrowUp,
+  ClipboardPaste,
+  Copy,
+  FolderPlus,
+  MoveRight,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import type { ChangeEvent, MouseEvent, RefObject } from "react";
 
 type ToolbarProps = {
-  breadcrumbs: Breadcrumb[];
   query: string;
+  currentPathLabel: string;
   onQueryChange: (value: string) => void;
   onUp: () => void;
   onRefresh: () => void;
@@ -14,15 +24,23 @@ type ToolbarProps = {
   showTrash: boolean;
   actionLoading: boolean;
   canWrite: boolean;
+  selectionCount: number;
+  clipboardCount: number;
+  archiveHref: string | null;
   parent: string | null;
   fileInputRef: RefObject<HTMLInputElement>;
   onUploadChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onBreadcrumbClick: (path: string) => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onRename: () => void;
+  onMove: () => void;
+  onArchiveClick: () => void;
+  onDelete: () => void;
 };
 
 export function Toolbar({
-  breadcrumbs,
   query,
+  currentPathLabel,
   onQueryChange,
   onUp,
   onRefresh,
@@ -32,67 +50,136 @@ export function Toolbar({
   showTrash,
   actionLoading,
   canWrite,
+  selectionCount,
+  clipboardCount,
+  archiveHref,
   parent,
   fileInputRef,
   onUploadChange,
-  onBreadcrumbClick,
+  onCopy,
+  onPaste,
+  onRename,
+  onMove,
+  onArchiveClick,
+  onDelete,
 }: ToolbarProps) {
   const iconProps = {
     size: 16,
     strokeWidth: 1.8,
     "aria-hidden": true,
   } as const;
+  const hasSelection = selectionCount > 0;
+  const archiveDisabled = actionLoading || showTrash || selectionCount === 0 || !archiveHref;
+  const handleArchiveClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (archiveDisabled) {
+      event.preventDefault();
+      return;
+    }
+    onArchiveClick();
+  };
 
   return (
-    <div className="toolbar card">
+    <div
+      className={
+        hasSelection ? "toolbar card is-sticky shadow-sm shadow-sky-800" : "toolbar card "
+      }
+    >
       <div>
         <p className="label">Current path</p>
-        <div className="breadcrumbs">
-          {breadcrumbs.map((crumb, index) => (
-            <button
-              key={crumb.path}
-              className="crumb"
-              onClick={() => onBreadcrumbClick(crumb.path)}
-            >
-              {crumb.label}
-              {index < breadcrumbs.length - 1 ? <span>/</span> : null}
-            </button>
-          ))}
-        </div>
+        <p className="meta">{currentPathLabel}</p>
       </div>
       <div className="toolbar-actions">
-        <input
-          className="search"
-          type="search"
-          placeholder="Search names..."
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          disabled={showTrash}
-        />
+        {!hasSelection ? (
+          <input
+            className="search"
+            type="search"
+            placeholder="Search names..."
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            disabled={showTrash}
+          />
+        ) : null}
         <button className="ghost" onClick={onUp} disabled={!parent}>
           <ArrowUp {...iconProps} />
           Up
         </button>
-        <button className="ghost" onClick={onRefresh}>
-          <RefreshCw {...iconProps} />
-          Refresh
-        </button>
-        <button onClick={onUploadClick} disabled={actionLoading || showTrash || !canWrite}>
-          <Upload {...iconProps} />
-          Upload
-        </button>
-        <button
-          className="ghost"
-          onClick={onCreateFolder}
-          disabled={actionLoading || showTrash || !canWrite}
-        >
-          <FolderPlus {...iconProps} />
-          New Folder
-        </button>
-        <button className="ghost" onClick={onToggleTrash} disabled={actionLoading}>
-          <Trash2 {...iconProps} />
-          {showTrash ? "Back to Files" : "Trash"}
-        </button>
+        {hasSelection ? (
+          <>
+            <button
+              className="ghost"
+              onClick={onCopy}
+              disabled={actionLoading || showTrash || selectionCount === 0}
+            >
+              <Copy {...iconProps} />
+              Copy
+            </button>
+            <button
+              className="ghost"
+              onClick={onPaste}
+              disabled={actionLoading || showTrash || clipboardCount === 0 || !canWrite}
+            >
+              <ClipboardPaste {...iconProps} />
+              Paste
+            </button>
+            <button
+              className="ghost"
+              onClick={onRename}
+              disabled={actionLoading || showTrash || selectionCount !== 1 || !canWrite}
+            >
+              <Pencil {...iconProps} />
+              Rename
+            </button>
+            <button
+              className="ghost"
+              onClick={onMove}
+              disabled={actionLoading || showTrash || selectionCount === 0 || !canWrite}
+            >
+              <MoveRight {...iconProps} />
+              Move
+            </button>
+            <a
+              className={`ghost${archiveDisabled ? " is-disabled" : ""}`}
+              href={archiveHref ?? "#"}
+              onClick={handleArchiveClick}
+              aria-disabled={archiveDisabled}
+              tabIndex={archiveDisabled ? -1 : undefined}
+            >
+              <Archive {...iconProps} />
+              Download Zip
+            </a>
+            <button
+              className="danger"
+              onClick={onDelete}
+              disabled={actionLoading || showTrash || selectionCount === 0 || !canWrite}
+            >
+              <Trash2 {...iconProps} />
+              Delete
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="ghost" onClick={onRefresh}>
+              <RefreshCw {...iconProps} />
+              Refresh
+            </button>
+            <button onClick={onUploadClick} disabled={actionLoading || showTrash || !canWrite}>
+              <Upload {...iconProps} />
+              Upload
+            </button>
+            <button
+              className="ghost"
+              onClick={onCreateFolder}
+              disabled={actionLoading || showTrash || !canWrite}
+            >
+              <FolderPlus {...iconProps} />
+              New Folder
+            </button>
+            <button className="ghost" onClick={onToggleTrash} disabled={actionLoading}>
+              <Trash2 {...iconProps} />
+              {showTrash ? "Back to Files" : "Trash"}
+            </button>
+          </>
+        )}
         <input
           ref={fileInputRef}
           className="file-input"
