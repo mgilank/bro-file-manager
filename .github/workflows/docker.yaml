@@ -55,7 +55,7 @@ jobs:
         with:
           flavor: |
             latest=auto
-          images: "ghcr.io/steps.string.outputs.lowercase"
+          images: "ghcr.io/{{ steps.string.outputs.lowercase }}"
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -78,4 +78,5 @@ jobs:
           secrets: |
             GITHUB_SHA=${{ github.sha }}
             GH_PKG_TOKEN=${{ secrets.GH_TOKEN }}
+
           
