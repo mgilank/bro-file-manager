@@ -1,4 +1,4 @@
-import type { DateFilter, Theme } from "./types";
+import type { DateFilter, Theme, ViewMode } from "./types";
 import { parseEnvBoolean } from "./utils/env";
 
 export const API_BASE = "/api";
@@ -12,6 +12,8 @@ export const DEFAULT_THEME: Theme = "dawn";
 export const THEMES: Theme[] = ["dawn", "coast", "slate"];
 export const THEME_STORAGE_KEY = "bro-file-manager-theme";
 export const LAST_PATH_STORAGE_KEY = "bro-file-manager-last-path";
+export const DEFAULT_VIEW_MODE: ViewMode = "list";
+export const VIEW_MODE_STORAGE_KEY = "bro-file-manager-view";
 
 export const FILE_TYPE_GROUPS = [
   { key: "image", exts: [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"] },

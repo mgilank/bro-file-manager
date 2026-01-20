@@ -4,6 +4,8 @@ import {
   ClipboardPaste,
   Copy,
   FolderPlus,
+  LayoutGrid,
+  List as ListIcon,
   MoveRight,
   Pencil,
   RefreshCw,
@@ -12,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import type { ChangeEvent, MouseEvent, RefObject } from "react";
+import type { ViewMode } from "../types";
 
 type ToolbarProps = {
   query: string;
@@ -29,6 +32,8 @@ type ToolbarProps = {
   clipboardCount: number;
   archiveHref: string | null;
   parent: string | null;
+  viewMode: ViewMode;
+  onViewModeChange: (value: ViewMode) => void;
   fileInputRef: RefObject<HTMLInputElement>;
   onUploadChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onCopy: () => void;
@@ -56,6 +61,8 @@ export function Toolbar({
   clipboardCount,
   archiveHref,
   parent,
+  viewMode,
+  onViewModeChange,
   fileInputRef,
   onUploadChange,
   onCopy,
@@ -187,6 +194,28 @@ export function Toolbar({
             </button>
           </>
         )}
+        {!showTrash ? (
+          <div className="view-toggle" role="group" aria-label="View mode">
+            <button
+              type="button"
+              className={`ghost${viewMode === "list" ? " is-active" : ""}`}
+              aria-pressed={viewMode === "list"}
+              onClick={() => onViewModeChange("list")}
+            >
+              <ListIcon {...iconProps} />
+              List
+            </button>
+            <button
+              type="button"
+              className={`ghost${viewMode === "grid" ? " is-active" : ""}`}
+              aria-pressed={viewMode === "grid"}
+              onClick={() => onViewModeChange("grid")}
+            >
+              <LayoutGrid {...iconProps} />
+              Grid
+            </button>
+          </div>
+        ) : null}
         <input
           ref={fileInputRef}
           className="file-input"

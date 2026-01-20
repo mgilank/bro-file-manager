@@ -24,6 +24,8 @@ import {
   LAST_PATH_STORAGE_KEY,
   PAGE_SIZE_OPTIONS,
   SHORTCUTS_ENABLED,
+  DEFAULT_VIEW_MODE,
+  VIEW_MODE_STORAGE_KEY,
 } from "./constants";
 import { useContentSearch } from "./hooks/useContentSearch";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -43,6 +45,7 @@ import type {
   TrashResponse,
   TypeFilter,
   UserRole,
+  ViewMode,
 } from "./types";
 import { parseSizeInput } from "./utils/filters";
 import { isImagePreviewable, isTextPreviewableName, matchesTypeFilter } from "./utils/fileTypes";
@@ -75,6 +78,26 @@ function clearStoredPath() {
   }
   try {
     window.localStorage.removeItem(LAST_PATH_STORAGE_KEY);
+  } catch {}
+}
+
+function getStoredViewMode(): ViewMode {
+  if (typeof window === "undefined") {
+    return DEFAULT_VIEW_MODE;
+  }
+  const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+  if (stored === "list" || stored === "grid") {
+    return stored;
+  }
+  return DEFAULT_VIEW_MODE;
+}
+
+function setStoredViewMode(value: ViewMode) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, value);
   } catch {}
 }
 
@@ -111,6 +134,7 @@ export default function App() {
   const [imagePreviewPath, setImagePreviewPath] = useState<string | null>(null);
   const [imagePreviewName, setImagePreviewName] = useState<string | null>(null);
   const [textPreviewOpen, setTextPreviewOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => getStoredViewMode());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
 
@@ -914,6 +938,10 @@ export default function App() {
     }
   }, [auth, loadPath]);
 
+  useEffect(() => {
+    setStoredViewMode(viewMode);
+  }, [viewMode]);
+
   return (
     <div
       className="app"
@@ -974,6 +1002,8 @@ export default function App() {
               onCreateFolder={handleCreateFolder}
               onToggleTrash={handleToggleTrash}
               showTrash={showTrash}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
               actionLoading={actionLoading}
               canWrite={canWrite}
               selectionCount={selectionCount}
@@ -1020,6 +1050,8 @@ export default function App() {
               loading={loading}
               trashItems={pagedTrashItems}
               filtered={pagedEntries}
+              path={path}
+              viewMode={viewMode}
               selectedNames={selectedNames}
               allSelected={allSelected}
               dragActive={dragActive}

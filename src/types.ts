@@ -77,6 +77,7 @@ export type SortMode =
   | "type-asc"
   | "type-desc";
 export type Theme = "dawn" | "coast" | "slate";
+export type ViewMode = "list" | "grid";
 
 export type Breadcrumb = {
   label: string;

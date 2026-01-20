@@ -1,6 +1,9 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
-import type { Entry, SortMode, TrashItem } from "../types";
+import type { Entry, SortMode, TrashItem, ViewMode } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
+import { isImagePreviewable } from "../utils/fileTypes";
+import { joinPath } from "../utils/path";
+import { API_BASE } from "../constants";
 import { FileIcon, FolderIcon } from "./icons";
 import { Pagination, type PaginationProps } from "./Pagination";
 
@@ -9,6 +12,8 @@ type FileListProps = {
   loading: boolean;
   trashItems: TrashItem[];
   filtered: Entry[];
+  path: string;
+  viewMode: ViewMode;
   selectedNames: string[];
   allSelected: boolean;
   dragActive: boolean;
@@ -29,6 +34,8 @@ export function FileList({
   loading,
   trashItems,
   filtered,
+  path,
+  viewMode,
   selectedNames,
   allSelected,
   dragActive,
@@ -43,6 +50,7 @@ export function FileList({
   onEntryClick,
   onRestore,
 }: FileListProps) {
+  const isGridView = viewMode === "grid" && !showTrash;
   const sortState = {
     name: sortMode === "name-asc" ? "asc" : sortMode === "name-desc" ? "desc" : null,
     size: sortMode === "size-asc" ? "asc" : sortMode === "size-desc" ? "desc" : null,
@@ -71,7 +79,7 @@ export function FileList({
   };
 
   return (
-    <div className={`card list ${dragActive ? "dragging" : ""}`}>
+    <div className={`card list ${dragActive ? "dragging" : ""}${isGridView ? " is-grid" : ""}`}>
       {pagination && showPaginationTop ? <Pagination {...pagination} compact /> : null}
       {showTrash ? (
         <>
@@ -111,7 +119,7 @@ export function FileList({
         </>
       ) : (
         <>
-          <div className="list-header">
+          <div className={`list-header${isGridView ? " is-grid" : ""}`}>
             <span>
               <input type="checkbox" checked={allSelected} onChange={onToggleSelectAll} />
             </span>
@@ -156,6 +164,51 @@ export function FileList({
             <div className="empty">Loading directory...</div>
           ) : filtered.length === 0 ? (
             <div className="empty">Nothing here yet.</div>
+          ) : isGridView ? (
+            <div className="thumb-grid">
+              {filtered.map((entry, index) => {
+                const isSelected = selectedNames.includes(entry.name);
+                const entryPath = joinPath(path, entry.name);
+                const isImage = entry.type === "file" && isImagePreviewable(entry.name);
+                return (
+                  <div
+                    key={`${entry.type}-${entry.name}`}
+                    className={`thumb-card ${entry.type}${isSelected ? " selected" : ""}`}
+                    style={{ animationDelay: `${index * 20}ms` }}
+                  >
+                    <div className="thumb-top">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelect(entry)}
+                        aria-label={`Select ${entry.name}`}
+                      />
+                      <span className="thumb-type">{entry.type === "dir" ? "Folder" : "File"}</span>
+                    </div>
+                    <button className="thumb-media" onClick={() => onEntryClick(entry)}>
+                      {isImage ? (
+                        <img
+                          src={`${API_BASE}/image?path=${encodeURIComponent(entryPath)}`}
+                          alt={entry.name}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="thumb-icon">
+                          {entry.type === "dir" ? <FolderIcon /> : <FileIcon />}
+                        </span>
+                      )}
+                    </button>
+                    <button className="thumb-name" onClick={() => onEntryClick(entry)}>
+                      {entry.name}
+                    </button>
+                    <div className="thumb-meta">
+                      <span>{entry.type === "file" ? formatBytes(entry.size) : "Folder"}</span>
+                      <span>{formatDate(entry.mtime)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             filtered.map((entry, index) => (
               <div
