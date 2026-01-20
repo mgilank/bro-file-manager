@@ -5,8 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project follows SemVer.
 
 ## [Unreleased]
+
+## [0.2.2] - 2026-01-20
+### Added
+- List/grid view toggle with thumbnail cards for files and folders.
+- In-app code editor for supported web files (Ace) with syntax highlighting, undo, and fullscreen mode.
+- New tab editor option via query param.
 ### Changed
+- Compatible files open directly in the editor when clicked and remember view mode.
 - Docker Compose host mount paths can be overridden via `HOST_DATA_PATH` and `HOST_LOGS_PATH`.
+### Fixed
+- Editor modal sizing and Ace container rendering in fullscreen.
 
 ## [0.2.1] - 2026-01-13
 ### Added

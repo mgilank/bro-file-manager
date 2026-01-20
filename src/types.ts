@@ -12,6 +12,14 @@ export type Preview = {
   content: string;
 };
 
+export type EditorFile = {
+  name: string;
+  size: number;
+  mtime: number;
+  path: string;
+  content: string;
+};
+
 export type UserRole = "read-only" | "read-write" | "admin";
 
 export type TrashItem = {

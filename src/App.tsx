@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { Header } from "./components/Header";
+import { EditorModal } from "./components/EditorModal";
 import { ImagePreviewModal } from "./components/ImagePreviewModal";
 import { LoginForm } from "./components/LoginForm";
 import { FileList } from "./components/FileList";
@@ -37,6 +38,7 @@ import type {
   Breadcrumb,
   ClipboardItem,
   DateFilter,
+  EditorFile,
   Entry,
   ListResponse,
   Preview,
@@ -48,7 +50,12 @@ import type {
   ViewMode,
 } from "./types";
 import { parseSizeInput } from "./utils/filters";
-import { isImagePreviewable, isTextPreviewableName, matchesTypeFilter } from "./utils/fileTypes";
+import {
+  isImagePreviewable,
+  isTextEditableName,
+  isTextPreviewableName,
+  matchesTypeFilter,
+} from "./utils/fileTypes";
 import { joinPath, normalizeInputPath } from "./utils/path";
 import { sortEntries } from "./utils/sort";
 
@@ -108,6 +115,13 @@ export default function App() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selected, setSelected] = useState<Entry | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [editorFile, setEditorFile] = useState<EditorFile | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorLoading, setEditorLoading] = useState(false);
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [editorContent, setEditorContent] = useState("");
+  const [editorInitialContent, setEditorInitialContent] = useState("");
+  const [pendingEditorPath, setPendingEditorPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -262,6 +276,15 @@ export default function App() {
     [password, loginUsername, loadPath, notifyError, pushToast]
   );
 
+  const resetEditorState = useCallback(() => {
+    setEditorOpen(false);
+    setEditorFile(null);
+    setEditorContent("");
+    setEditorInitialContent("");
+    setEditorLoading(false);
+    setEditorSaving(false);
+  }, []);
+
   const handleLogout = useCallback(async () => {
     await apiFetch("/logout", { method: "POST" });
     setAuth("logged_out");
@@ -271,6 +294,7 @@ export default function App() {
     setTextPreviewOpen(false);
     setImagePreviewPath(null);
     setImagePreviewName(null);
+    resetEditorState();
     setSelectedNames([]);
     setClipboard(null);
     setShowTrash(false);
@@ -278,7 +302,45 @@ export default function App() {
     setUsername("");
     setUserRole("read-write");
     pushToast("Signed out.", "info");
-  }, [pushToast]);
+  }, [pushToast, resetEditorState]);
+
+  const openEditorByPath = useCallback(
+    async (targetPath: string, targetName?: string) => {
+      if (editorOpen && editorContent !== editorInitialContent) {
+        const confirmClose = window.confirm("Discard unsaved changes?");
+        if (!confirmClose) {
+          return;
+        }
+      }
+
+      setEditorLoading(true);
+      setError(null);
+      setEditorOpen(true);
+      setEditorFile({
+        name: targetName ?? targetPath.split("/").filter(Boolean).pop() ?? "untitled",
+        path: targetPath,
+        content: "",
+        size: 0,
+        mtime: Date.now(),
+      });
+
+      const response = await apiFetch(`/edit?path=${encodeURIComponent(targetPath)}`);
+
+      if (!response.ok) {
+        const data = await readJson(response);
+        notifyError(data?.error ?? "Failed to open editor.");
+        setEditorLoading(false);
+        return;
+      }
+
+      const data = (await response.json()) as EditorFile;
+      setEditorFile(data);
+      setEditorContent(data.content);
+      setEditorInitialContent(data.content);
+      setEditorLoading(false);
+    },
+    [editorOpen, editorContent, editorInitialContent, notifyError]
+  );
 
   const handleEntryClick = useCallback(
     (entry: Entry) => {
@@ -290,13 +352,17 @@ export default function App() {
         setTextPreviewOpen(false);
         setImagePreviewPath(null);
         setImagePreviewName(null);
+        if (isTextEditableName(entry.name)) {
+          void openEditorByPath(joinPath(path, entry.name), entry.name);
+          return;
+        }
         if (isImagePreviewable(entry.name)) {
           setImagePreviewPath(joinPath(path, entry.name));
           setImagePreviewName(entry.name);
         }
       }
     },
-    [path, loadPath]
+    [path, loadPath, openEditorByPath]
   );
 
   const handlePreview = useCallback(async () => {
@@ -350,6 +416,95 @@ export default function App() {
     setTextPreviewOpen(false);
   }, []);
 
+  const selectedEntries = useMemo(() => {
+    return entries.filter((entry) => selectedNames.includes(entry.name));
+  }, [entries, selectedNames]);
+
+  const selectionTargets = selectedEntries;
+  const selectionCount = selectedEntries.length;
+  const canWrite = userRole !== "read-only";
+  const editTarget = selectionTargets.length === 1 ? selectionTargets[0] : null;
+  const canEditTarget =
+    !showTrash &&
+    editTarget?.type === "file" &&
+    isTextEditableName(editTarget.name);
+  const editDisabled =
+    actionLoading || editorLoading || editorSaving || !canWrite || !canEditTarget;
+
+  const refreshView = useCallback(async () => {
+    if (showTrash) {
+      await loadTrash();
+    } else {
+      await loadPath(path);
+    }
+  }, [showTrash, loadTrash, loadPath, path]);
+
+  const closeEditor = useCallback(() => {
+    if (editorOpen && editorContent !== editorInitialContent) {
+      const confirmClose = window.confirm("Discard unsaved changes?");
+      if (!confirmClose) {
+        return;
+      }
+    }
+    resetEditorState();
+  }, [editorOpen, editorContent, editorInitialContent, resetEditorState]);
+
+  const handleOpenEditor = useCallback(async () => {
+    if (!editTarget || editTarget.type !== "file") {
+      notifyError("Select a single file to edit.");
+      return;
+    }
+    if (!isTextEditableName(editTarget.name)) {
+      notifyError("Editor supports common web file types only.");
+      return;
+    }
+
+    await openEditorByPath(joinPath(path, editTarget.name), editTarget.name);
+  }, [editTarget, path, notifyError, openEditorByPath]);
+
+  const openEditorInNewTab = useCallback(() => {
+    if (!editorFile || typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("edit", editorFile.path);
+    const next = window.open(url.toString(), "_blank", "noopener,noreferrer");
+    if (next) {
+      next.opener = null;
+    }
+  }, [editorFile]);
+
+  const handleSaveEditor = useCallback(async () => {
+    if (!editorFile) {
+      return;
+    }
+    if (!canWrite) {
+      notifyError("Read-only account.");
+      return;
+    }
+
+    setEditorSaving(true);
+    setError(null);
+
+    const response = await apiFetch("/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: editorFile.path, content: editorContent }),
+    });
+
+    if (!response.ok) {
+      const data = await readJson(response);
+      notifyError(data?.error ?? "Save failed.");
+      setEditorSaving(false);
+      return;
+    }
+
+    setEditorInitialContent(editorContent);
+    setEditorSaving(false);
+    pushToast("File saved.", "success");
+    await refreshView();
+  }, [editorFile, editorContent, canWrite, notifyError, pushToast, refreshView]);
+
   const handleImageError = useCallback(() => {
     notifyError("Image preview failed to load.");
     closeImagePreview();
@@ -363,22 +518,6 @@ export default function App() {
     setImagePreviewPath(null);
     setImagePreviewName(null);
   }, []);
-
-  const refreshView = useCallback(async () => {
-    if (showTrash) {
-      await loadTrash();
-    } else {
-      await loadPath(path);
-    }
-  }, [showTrash, loadTrash, loadPath, path]);
-
-  const selectedEntries = useMemo(() => {
-    return entries.filter((entry) => selectedNames.includes(entry.name));
-  }, [entries, selectedNames]);
-
-  const selectionTargets = selectedEntries;
-  const selectionCount = selectedEntries.length;
-  const canWrite = userRole !== "read-only";
 
   const requireWrite = useCallback(() => {
     if (!canWrite) {
@@ -916,6 +1055,7 @@ export default function App() {
       onPaste: handlePaste,
       onCreateFolder: handleCreateFolder,
       onUpload: handleUploadClick,
+      onEdit: handleOpenEditor,
       onRename: handleRename,
       onDelete: handleDelete,
       onToggleTrash: handleToggleTrash,
@@ -939,6 +1079,31 @@ export default function App() {
   }, [auth, loadPath]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const editPath = params.get("edit");
+    if (editPath) {
+      setPendingEditorPath(editPath);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (auth !== "authed" || !pendingEditorPath) {
+      return;
+    }
+    void openEditorByPath(pendingEditorPath);
+    setPendingEditorPath(null);
+  }, [auth, pendingEditorPath, openEditorByPath]);
+
+  useEffect(() => {
+    if (auth === "logged_out") {
+      resetEditorState();
+    }
+  }, [auth, resetEditorState]);
+
+  useEffect(() => {
     setStoredViewMode(viewMode);
   }, [viewMode]);
 
@@ -951,6 +1116,18 @@ export default function App() {
       onDrop={handleDrop}
     >
       <Toasts toasts={toasts} />
+      <EditorModal
+        open={editorOpen}
+        file={editorFile}
+        dirty={editorOpen && editorContent !== editorInitialContent}
+        loading={editorLoading}
+        saving={editorSaving}
+        canWrite={canWrite}
+        onOpenInNewTab={openEditorInNewTab}
+        onChange={setEditorContent}
+        onSave={handleSaveEditor}
+        onClose={closeEditor}
+      />
       <ImagePreviewModal
         path={imagePreviewPath}
         name={imagePreviewName}
@@ -1004,6 +1181,10 @@ export default function App() {
               showTrash={showTrash}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
+              showEdit={canEditTarget}
+              editDisabled={editDisabled}
+              editLoading={editorLoading}
+              onEdit={handleOpenEditor}
               actionLoading={actionLoading}
               canWrite={canWrite}
               selectionCount={selectionCount}

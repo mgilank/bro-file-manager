@@ -3,6 +3,7 @@ import {
   ArrowUp,
   ClipboardPaste,
   Copy,
+  FilePenLine,
   FolderPlus,
   LayoutGrid,
   List as ListIcon,
@@ -34,6 +35,10 @@ type ToolbarProps = {
   parent: string | null;
   viewMode: ViewMode;
   onViewModeChange: (value: ViewMode) => void;
+  showEdit: boolean;
+  editDisabled: boolean;
+  editLoading: boolean;
+  onEdit: () => void;
   fileInputRef: RefObject<HTMLInputElement>;
   onUploadChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onCopy: () => void;
@@ -63,6 +68,10 @@ export function Toolbar({
   parent,
   viewMode,
   onViewModeChange,
+  showEdit,
+  editDisabled,
+  editLoading,
+  onEdit,
   fileInputRef,
   onUploadChange,
   onCopy,
@@ -143,6 +152,12 @@ export function Toolbar({
               <Pencil {...iconProps} />
               Rename
             </button>
+            {showEdit ? (
+              <button className="ghost" onClick={onEdit} disabled={editDisabled}>
+                <FilePenLine {...iconProps} />
+                {editLoading ? "Loading..." : "Edit"}
+              </button>
+            ) : null}
             <button
               className="ghost"
               onClick={onMove}

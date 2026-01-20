@@ -46,6 +46,7 @@ const SESSION_COOKIE = "fm_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
 const SESSION_ROTATE_MS = 1000 * 60 * 30;
 const MAX_PREVIEW_BYTES = 200 * 1024;
+const MAX_EDIT_BYTES = 1024 * 1024;
 const SEARCH_MAX_BYTES_RAW = process.env.SEARCH_MAX_BYTES?.trim();
 const SEARCH_MAX_BYTES = Number.parseInt(SEARCH_MAX_BYTES_RAW ?? "", 10);
 const MAX_SEARCH_BYTES = Number.isNaN(SEARCH_MAX_BYTES) ? MAX_PREVIEW_BYTES : SEARCH_MAX_BYTES;
@@ -63,6 +64,26 @@ const SESSION_COOKIE_BASE_OPTIONS = {
   path: "/",
 } as const;
 const TEXT_PREVIEW_EXTS = new Set([".txt", ".php", ".js", ".html"]);
+const TEXT_EDIT_EXTS = new Set([
+  ".txt",
+  ".php",
+  ".md",
+  ".markdown",
+  ".html",
+  ".htm",
+  ".css",
+  ".scss",
+  ".less",
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".json",
+  ".yml",
+  ".yaml",
+  ".xml",
+  ".svg",
+]);
 const IMAGE_PREVIEW_EXTS = new Set([
   ".png",
   ".jpg",
@@ -383,6 +404,47 @@ app.get("/api/image", async (c) => {
   return c.body(file);
 });
 
+app.get("/api/edit", async (c) => {
+  const session = c.get("session");
+  const requestPath = c.req.query("path");
+  if (!requestPath) {
+    return c.json({ error: "Path is required." }, 400);
+  }
+
+  let resolved;
+  try {
+    resolved = await resolveSafePath(requestPath, session.rootReal);
+  } catch {
+    return c.json({ error: "Path not found." }, 404);
+  }
+
+  const stats = await fs.stat(resolved.fullPath);
+  if (!stats.isFile()) {
+    return c.json({ error: "Path is not a file." }, 400);
+  }
+
+  if (!isTextEditable(resolved.fullPath)) {
+    return c.json({ error: "Editor not available for this file type." }, 400);
+  }
+
+  if (stats.size > MAX_EDIT_BYTES) {
+    return c.json({ error: "File is too large to edit." }, 413);
+  }
+
+  const file = Bun.file(resolved.fullPath);
+  const text = await file.text();
+
+  await auditLog(c, "edit_open", { path: resolved.normalized, username: session.user });
+
+  return c.json({
+    name: path.basename(resolved.fullPath),
+    size: stats.size,
+    mtime: stats.mtimeMs,
+    path: resolved.normalized,
+    content: text,
+  });
+});
+
 app.get("/api/preview", async (c) => {
   const session = c.get("session");
   const requestPath = c.req.query("path");
@@ -421,6 +483,48 @@ app.get("/api/preview", async (c) => {
     mtime: stats.mtimeMs,
     content: text,
   });
+});
+
+app.post("/api/edit", async (c) => {
+  const session = c.get("session");
+  if (!canWrite(session.role)) {
+    return c.json({ error: "Read-only account." }, 403);
+  }
+
+  const body = await readJsonBody<{ path?: string; content?: string }>(c);
+  if (!body.path) {
+    return c.json({ error: "Path is required." }, 400);
+  }
+  if (typeof body.content !== "string") {
+    return c.json({ error: "Content is required." }, 400);
+  }
+
+  let resolved;
+  try {
+    resolved = await resolveSafePath(body.path, session.rootReal);
+  } catch {
+    return c.json({ error: "Path not found." }, 404);
+  }
+
+  const stats = await fs.stat(resolved.fullPath);
+  if (!stats.isFile()) {
+    return c.json({ error: "Path is not a file." }, 400);
+  }
+
+  if (!isTextEditable(resolved.fullPath)) {
+    return c.json({ error: "Editor not available for this file type." }, 400);
+  }
+
+  const bytes = Buffer.byteLength(body.content, "utf8");
+  if (bytes > MAX_EDIT_BYTES) {
+    return c.json({ error: "File is too large to save." }, 413);
+  }
+
+  await fs.writeFile(resolved.fullPath, body.content, "utf8");
+
+  await auditLog(c, "edit_save", { path: resolved.normalized, username: session.user, bytes });
+
+  return c.json({ ok: true });
 });
 
 app.get("/api/download", async (c) => {
@@ -1198,6 +1302,10 @@ function sanitizeName(value: string) {
 
 function isTextPreviewable(filePath: string) {
   return TEXT_PREVIEW_EXTS.has(path.extname(filePath).toLowerCase());
+}
+
+function isTextEditable(filePath: string) {
+  return TEXT_EDIT_EXTS.has(path.extname(filePath).toLowerCase());
 }
 
 function isImagePreviewable(filePath: string) {

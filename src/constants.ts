@@ -43,6 +43,26 @@ export const FILE_TYPE_GROUPS = [
 ] as const;
 
 export const TEXT_PREVIEW_EXTS = new Set([".txt", ".php", ".js", ".html"]);
+export const TEXT_EDIT_EXTS = new Set([
+  ".txt",
+  ".php",
+  ".md",
+  ".markdown",
+  ".html",
+  ".htm",
+  ".css",
+  ".scss",
+  ".less",
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".json",
+  ".yml",
+  ".yaml",
+  ".xml",
+  ".svg",
+]);
 export const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
 export const DEFAULT_PAGE_SIZE = 20;
 

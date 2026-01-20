@@ -156,6 +156,10 @@ body {
   z-index: 2200;
 }
 
+.text-preview.is-fullscreen {
+  padding: 0;
+}
+
 .text-preview-body {
   background: var(--card);
   border-radius: 20px;
@@ -188,6 +192,123 @@ body {
   max-height: 60vh;
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.editor-body {
+  width: min(90vw, 1080px);
+}
+
+.editor-body.is-fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border-radius: 0;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-body.is-fullscreen .editor-surface {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.editor-header {
+  align-items: center;
+}
+
+.editor-title {
+  display: grid;
+  gap: 4px;
+}
+
+.editor-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-loading {
+  padding: 20px;
+  border-radius: 12px;
+  background: rgba(240, 227, 213, 0.4);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.editor-surface {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(28, 37, 43, 0.12);
+  background: #fff;
+  height: 60vh;
+  min-height: 320px;
+  width: 100%;
+}
+
+.editor-surface.ace_editor {
+  height: 100%;
+  width: 100%;
+  font-family: "SF Mono", "Menlo", "Consolas", "Liberation Mono", monospace;
+  font-size: 0.9rem;
+}
+
+.editor-surface .ace_gutter {
+  background: rgba(240, 227, 213, 0.5);
+  color: #5a6b70;
+}
+
+.editor-surface .ace_gutter-active-line {
+  background: rgba(145, 200, 255, 0.24);
+}
+
+.editor-surface .ace_active-line {
+  background: rgba(145, 200, 255, 0.18);
+}
+
+.editor-surface .ace_keyword {
+  color: #b33d1e;
+  font-weight: 700;
+}
+
+.editor-surface .ace_tag {
+  color: #2d6a68;
+  font-weight: 700;
+}
+
+.editor-surface .ace_attribute-name {
+  color: #1f4f5a;
+  font-weight: 600;
+}
+
+.editor-surface .ace_string,
+.editor-surface .ace_attribute-value {
+  color: #1f7a4d;
+  font-weight: 600;
+}
+
+.editor-surface .ace_comment {
+  color: #5a6b70;
+  font-style: italic;
+}
+
+.editor-surface .ace_constant.ace_numeric,
+.editor-surface .ace_constant.ace_language,
+.editor-surface .ace_constant.ace_boolean {
+  color: #8f2f1b;
+  font-weight: 700;
+}
+
+.editor-surface .ace_operator,
+.editor-surface .ace_punctuation {
+  color: #3d4b52;
+  font-weight: 600;
 }
 
 .header {
@@ -1146,6 +1267,22 @@ button.filters-toggle svg {
 
   .thumb-grid {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .editor-surface {
+    height: 50vh;
+  }
+
+  .editor-surface.ace_editor {
+    height: 100%;
+  }
+
+  .editor-body.is-fullscreen {
+    width: 100vw;
+    height: 100vh;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
   }
 }
 

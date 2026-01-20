@@ -8,6 +8,7 @@ type ShortcutHandlers = {
   onPaste: () => void;
   onCreateFolder: () => void;
   onUpload: () => void;
+  onEdit: () => void;
   onRename: () => void;
   onDelete: () => void;
   onToggleTrash: () => void;
@@ -82,6 +83,14 @@ export function useKeyboardShortcuts({
       if (key === "r" || key === "f2") {
         event.preventDefault();
         handlers.onRename();
+        return;
+      }
+
+      if (key === "e") {
+        if (selectionTargets.length === 1) {
+          event.preventDefault();
+          handlers.onEdit();
+        }
         return;
       }
 

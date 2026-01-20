@@ -1,4 +1,4 @@
-import { FILE_TYPE_GROUPS, TEXT_PREVIEW_EXTS } from "../constants";
+import { FILE_TYPE_GROUPS, TEXT_EDIT_EXTS, TEXT_PREVIEW_EXTS } from "../constants";
 import type { Entry, TypeFilter } from "../types";
 import { getFileExtension } from "./path";
 
@@ -39,6 +39,10 @@ export function matchesTypeFilter(entry: Entry, filter: TypeFilter) {
 
 export function isTextPreviewableName(name: string) {
   return TEXT_PREVIEW_EXTS.has(getFileExtension(name));
+}
+
+export function isTextEditableName(name: string) {
+  return TEXT_EDIT_EXTS.has(getFileExtension(name));
 }
 
 export function isImagePreviewable(name: string) {
