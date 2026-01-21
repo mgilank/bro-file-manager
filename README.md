@@ -1,3 +1,5 @@
+Sponsored by [Jetorbit.com](https://jetorbit.com)
+
 ![Bro File Manager](public/brofm.jpg)
 
 # Bro File Manager
@@ -141,3 +143,5 @@ See `CHANGELOG.md` for release notes.
 - Audit logs are written to `./audit.log` by default (override with `AUDIT_LOG_PATH`).
 
 Build with ❤️ from Jogja & Jetorbit
+
+Sponsored by [Jetorbit.com](https://jetorbit.com)
