@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows SemVer.
 
 ## [Unreleased]
 
+### Added
+- **S3 Integration** - Support for AWS S3, Cloudflare R2, Backblaze B2, MinIO, and other S3-compatible services
+  - Storage mode switcher to toggle between Local Files and S3 Storage
+  - Admin-only S3 configuration management with connection testing
+  - Session-based S3 connections (each user can connect to different S3 configs)
+  - Quick setup presets for common S3-compatible services
+  - All file operations (list, upload, download, edit, delete, move, copy, mkdir) work with S3
+
 ## [0.2.2] - 2026-01-20
 ### Added
 - List/grid view toggle with thumbnail cards for files and folders.
