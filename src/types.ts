@@ -91,3 +91,35 @@ export type Breadcrumb = {
   label: string;
   path: string;
 };
+
+// S3 Types
+export type StorageMode = "local" | "s3";
+
+export type S3Config = {
+  id: string;
+  name: string;
+  bucket: string;
+  region: string;
+  endpoint?: string;
+  isDefault?: boolean;
+};
+
+export type S3ConnectionState = {
+  connected: boolean;
+  config?: {
+    id: string;
+    name: string;
+    bucket: string;
+    region: string;
+  };
+};
+
+export type S3ConfigForm = {
+  name: string;
+  region: string;
+  endpoint?: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucket: string;
+  prefix?: string;
+};
