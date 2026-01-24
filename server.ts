@@ -4,7 +4,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createHmac, randomUUID, scryptSync, timingSafeEqual } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, CopyObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { S3StorageAdapter } from "./server/storage/adapters.js";
 import {
   getS3Config,
@@ -1144,6 +1144,344 @@ app.post("/api/s3/configs/:id/test", async (c) => {
   } catch (error: any) {
     await auditLog(c, "s3_config_tested", { username: session.user, configId: id, success: false, error: error.message });
     return c.json({ success: false, error: error.message }, 400);
+  }
+});
+
+// ============================================================================
+// S3 Session Management
+// ============================================================================
+
+app.post("/api/s3/connect", async (c) => {
+  const session = c.get("session");
+
+  const { configId } = await c.req.json();
+  if (!configId) {
+    return c.json({ error: "Missing configId" }, 400);
+  }
+
+  const adapter = await getS3Adapter(configId);
+  if (!adapter) {
+    return c.json({ error: "Configuration not found" }, 404);
+  }
+
+  setSessionS3(session.user + ":" + session.role, configId, adapter);
+
+  await auditLog(c, "s3_connected", { username: session.user, configId });
+
+  return c.json({ success: true });
+});
+
+app.post("/api/s3/disconnect", async (c) => {
+  const session = c.get("session");
+
+  clearSessionS3(session.user + ":" + session.role);
+
+  return c.json({ success: true });
+});
+
+app.get("/api/s3/current", async (c) => {
+  const session = c.get("session");
+
+  const s3Session = getSessionS3(session.user + ":" + session.role);
+  if (!s3Session) {
+    return c.json({ connected: false });
+  }
+
+  const config = await getS3Config(s3Session.configId);
+  if (!config) {
+    clearSessionS3(session.user + ":" + session.role);
+    return c.json({ connected: false });
+  }
+
+  return c.json({
+    connected: true,
+    config: {
+      id: config.id,
+      name: config.name,
+      bucket: config.bucket,
+      region: config.region,
+    },
+  });
+});
+
+// ============================================================================
+// S3 File Operations
+// ============================================================================
+
+// Helper to verify S3 session
+async function requireS3Session(c: any, session: SessionContext):
+  Promise<{ adapter: S3StorageAdapter } | { error: string; status: number }>
+{
+  const s3Session = getSessionS3(session.user + ":" + session.role);
+  if (!s3Session) {
+    return { error: "Not connected to S3", status: 400 };
+  }
+
+  return { adapter: s3Session.adapter };
+}
+
+app.get("/api/s3/list", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  const path = c.req.query("path") || "/";
+  const limit = parseInt(c.req.query("limit") || "100");
+  const offset = parseInt(c.req.query("offset") || "0");
+
+  try {
+    const { entries, total } = await adapter.list(path, { limit, offset });
+    return c.json({ entries, total });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.get("/api/s3/download", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  const path = c.req.query("path");
+  if (!path) return c.json({ error: "Missing path" }, 400);
+
+  try {
+    const content = await adapter.read(path);
+    const stat = await adapter.stat(path);
+    const filename = path.split("/").pop() || "download";
+
+    return c.body(content, 200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": stat?.size.toString() || "0",
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.get("/api/s3/preview", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  const path = c.req.query("path");
+  if (!path) return c.json({ error: "Missing path" }, 400);
+
+  try {
+    const stat = await adapter.stat(path);
+    if (!stat || stat.type === "directory") {
+      return c.json({ error: "Not a file" }, 400);
+    }
+
+    const content = await adapter.read(path);
+    const text = content.toString("utf-8");
+
+    return c.json({ content: text.slice(0, MAX_PREVIEW_BYTES), size: stat.size });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.get("/api/s3/image", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  const path = c.req.query("path");
+  if (!path) return c.json({ error: "Missing path" }, 400);
+
+  try {
+    const content = await adapter.read(path);
+    const ext = path.split(".").pop()?.toLowerCase() || "";
+    const mimeType = IMAGE_MIME_BY_EXT[ext] || "image/jpeg";
+
+    return c.body(content, 200, {
+      "Content-Type": mimeType,
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.get("/api/s3/edit", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  if (session.role === "read-only") {
+    return c.json({ error: "Read-only users cannot edit files" }, 403);
+  }
+
+  const path = c.req.query("path");
+  if (!path) return c.json({ error: "Missing path" }, 400);
+
+  try {
+    const stat = await adapter.stat(path);
+    if (!stat) {
+      return c.json({ error: "File not found" }, 404);
+    }
+
+    if (stat.size > MAX_EDIT_BYTES) {
+      return c.json({ error: "File too large to edit" }, 400);
+    }
+
+    const content = await adapter.read(path);
+    return c.json({ content: content.toString("utf-8") });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.put("/api/s3/edit", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  if (session.role === "read-only") {
+    return c.json({ error: "Read-only users cannot edit files" }, 403);
+  }
+
+  const { path, content } = await c.req.json();
+  if (!path || content === undefined) {
+    return c.json({ error: "Missing path or content" }, 400);
+  }
+
+  try {
+    await adapter.write(path, Buffer.from(content));
+    await auditLog(c, "s3_file_edited", { username: session.user, path });
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post("/api/s3/upload", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  if (session.role === "read-only") {
+    return c.json({ error: "Read-only users cannot upload files" }, 403);
+  }
+
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File;
+  const path = formData.get("path") as string;
+
+  if (!file || !path) {
+    return c.json({ error: "Missing file or path" }, 400);
+  }
+
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const targetPath = path.endsWith("/") ? path + file.name : path;
+    await adapter.write(targetPath, buffer);
+
+    await auditLog(c, "s3_file_uploaded", { username: session.user, path: targetPath, size: buffer.length });
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.delete("/api/s3/delete", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  if (session.role === "read-only") {
+    return c.json({ error: "Read-only users cannot delete files" }, 403);
+  }
+
+  const path = c.req.query("path");
+  if (!path) return c.json({ error: "Missing path" }, 400);
+
+  try {
+    await adapter.delete(path);
+    await auditLog(c, "s3_file_deleted", { username: session.user, path });
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post("/api/s3/move", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  if (session.role === "read-only") {
+    return c.json({ error: "Read-only users cannot move files" }, 403);
+  }
+
+  const { source, destination } = await c.req.json();
+  if (!source || !destination) {
+    return c.json({ error: "Missing source or destination" }, 400);
+  }
+
+  try {
+    await adapter.move(source, destination);
+    await auditLog(c, "s3_file_moved", { username: session.user, source, destination });
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post("/api/s3/copy", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  if (session.role === "read-only") {
+    return c.json({ error: "Read-only users cannot copy files" }, 403);
+  }
+
+  const { source, destination } = await c.req.json();
+  if (!source || !destination) {
+    return c.json({ error: "Missing source or destination" }, 400);
+  }
+
+  try {
+    await adapter.copy(source, destination);
+    await auditLog(c, "s3_file_copied", { username: session.user, source, destination });
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post("/api/s3/mkdir", async (c) => {
+  const session = c.get("session");
+  const result = await requireS3Session(c, session);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+
+  const { adapter } = result;
+  if (session.role === "read-only") {
+    return c.json({ error: "Read-only users cannot create directories" }, 403);
+  }
+
+  const { path } = await c.req.json();
+  if (!path) return c.json({ error: "Missing path" }, 400);
+
+  try {
+    await adapter.mkdir(path);
+    await auditLog(c, "s3_directory_created", { username: session.user, path });
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
   }
 });
 
