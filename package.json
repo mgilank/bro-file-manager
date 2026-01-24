@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.975.0",
     "ace-builds": "^1.43.5",
     "hono": "^4.4.7",
     "lucide-react": "^0.562.0",
