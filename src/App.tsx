@@ -1455,18 +1455,40 @@ export default function App() {
   });
 
   useEffect(() => {
-    if (auth === "unknown") {
-      const initialPath = getStoredPath() ?? "/";
-      const loadInitialPath = async () => {
-        const ok = await loadPath(initialPath);
-        if (!ok && initialPath !== "/") {
-          clearStoredPath();
-          await loadPath("/");
-        }
-      };
-      void loadInitialPath();
+    if (auth !== "unknown") {
+      return;
     }
-  }, [auth, loadPath]);
+    const initialPath = getStoredPath() ?? "/";
+    const loadInitialPath = async () => {
+      if (route === "s3" || storageMode === "s3") {
+        if (route !== "s3") {
+          setRoute("s3");
+          setRouteS3ConfigId(routeS3ConfigId ?? null);
+          if (typeof window !== "undefined") {
+            const target = routeS3ConfigId ? `/s3/${routeS3ConfigId}` : "/s3";
+            window.history.replaceState(null, "", target);
+          }
+        }
+        const response = await refreshS3Connections();
+        const configs = (response?.configs ?? []) as S3Config[];
+        const nextId = routeS3ConfigId ?? activeS3ConfigId ?? configs[0]?.id ?? null;
+        if (nextId && configs.some((config) => config.id === nextId)) {
+          switchToS3(nextId);
+          return;
+        }
+        setStorageMode("s3");
+        setPendingS3Connect(true);
+        setShowS3Connection(true);
+        return;
+      }
+      const ok = await loadPath(initialPath);
+      if (!ok && initialPath !== "/") {
+        clearStoredPath();
+        await loadPath("/");
+      }
+    };
+    void loadInitialPath();
+  }, [auth, activeS3ConfigId, loadPath, refreshS3Connections, route, routeS3ConfigId, storageMode, switchToS3]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
