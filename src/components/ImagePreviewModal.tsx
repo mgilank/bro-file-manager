@@ -1,13 +1,20 @@
-import { API_BASE } from "../constants";
-
 type ImagePreviewModalProps = {
   path: string | null;
   name: string | null;
+  imageBasePath: string;
+  imageConfigId?: string | null;
   onClose: () => void;
   onError: () => void;
 };
 
-export function ImagePreviewModal({ path, name, onClose, onError }: ImagePreviewModalProps) {
+export function ImagePreviewModal({
+  path,
+  name,
+  imageBasePath,
+  imageConfigId,
+  onClose,
+  onError,
+}: ImagePreviewModalProps) {
   if (!path) {
     return null;
   }
@@ -22,7 +29,10 @@ export function ImagePreviewModal({ path, name, onClose, onError }: ImagePreview
           </button>
         </div>
         <img
-          src={`${API_BASE}/image?path=${encodeURIComponent(path)}`}
+          src={`${imageBasePath}?${new URLSearchParams({
+            path,
+            ...(imageConfigId ? { configId: imageConfigId } : {}),
+          })}`}
           alt={name ?? "Image preview"}
           onError={onError}
         />

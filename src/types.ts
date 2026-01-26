@@ -102,16 +102,13 @@ export type S3Config = {
   region: string;
   endpoint?: string;
   isDefault?: boolean;
+  active?: boolean;
 };
 
 export type S3ConnectionState = {
   connected: boolean;
-  config?: {
-    id: string;
-    name: string;
-    bucket: string;
-    region: string;
-  };
+  configs: S3Config[];
+  maxConnections?: number;
 };
 
 export type S3ConfigForm = {
@@ -122,4 +119,5 @@ export type S3ConfigForm = {
   secretAccessKey: string;
   bucket: string;
   prefix?: string;
+  active?: boolean;
 };

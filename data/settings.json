@@ -1,0 +1,37 @@
+{
+  "s3Configs": [
+    {
+      "name": "bro bucket",
+      "region": "auto",
+      "endpoint": "https://2b2e03be862ec9cdcc9a5be208889da1.r2.cloudflarestorage.com",
+      "accessKeyId": "1bac10cc6dabf9488434b8e6064cbcf7",
+      "secretAccessKey": "d7bcd7a2f05199f721d38a9b8d6156ae1df9330268f44f10daec0146aaa79367",
+      "bucket": "brobucket",
+      "prefix": "",
+      "id": "3673ae5d-089f-4e3c-a342-0ea7fcbe280b",
+      "active": true
+    },
+    {
+      "name": "AWS is3",
+      "region": "us-east-1t",
+      "endpoint": "http://localhost:5174/s3-settings",
+      "accessKeyId": "tes",
+      "secretAccessKey": "tes",
+      "bucket": "tes",
+      "prefix": "",
+      "id": "e38207c8-eaaa-4bf3-9874-52a8a5c9ab0c",
+      "active": false
+    },
+    {
+      "name": "bro bucket 2",
+      "region": "auto",
+      "endpoint": "https://2b2e03be862ec9cdcc9a5be208889da1.r2.cloudflarestorage.com",
+      "accessKeyId": "1bac10cc6dabf9488434b8e6064cbcf7",
+      "secretAccessKey": "d7bcd7a2f05199f721d38a9b8d6156ae1df9330268f44f10daec0146aaa79367",
+      "bucket": "brofm2",
+      "prefix": "",
+      "id": "9d2ea868-736a-40c1-b774-0a1678922039",
+      "active": true
+    }
+  ]
+}

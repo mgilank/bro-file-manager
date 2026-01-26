@@ -16,9 +16,14 @@ export interface S3ConfigProfile {
   bucket: string;
   prefix?: string;
   isDefault?: boolean;
+  active?: boolean;
 }
 
 const SETTINGS_PATH = join(process.cwd(), "data", "settings.json");
+
+function normalizeConfig(config: S3ConfigProfile): S3ConfigProfile {
+  return { ...config, active: config.active !== false };
+}
 
 export async function readSettings(): Promise<AppSettings> {
   try {
@@ -40,11 +45,12 @@ export async function addS3Config(config: Omit<S3ConfigProfile, "id">): Promise<
   const settings = await readSettings();
   const newConfig: S3ConfigProfile = {
     ...config,
+    active: config.active !== false,
     id: crypto.randomUUID(),
   };
   settings.s3Configs.push(newConfig);
   await writeSettings(settings);
-  return newConfig;
+  return normalizeConfig(newConfig);
 }
 
 export async function updateS3Config(id: string, updates: Partial<S3ConfigProfile>): Promise<S3ConfigProfile | null> {
@@ -52,7 +58,7 @@ export async function updateS3Config(id: string, updates: Partial<S3ConfigProfil
   const index = settings.s3Configs.findIndex((c) => c.id === id);
   if (index === -1) return null;
 
-  settings.s3Configs[index] = { ...settings.s3Configs[index], ...updates };
+  settings.s3Configs[index] = normalizeConfig({ ...settings.s3Configs[index], ...updates });
   await writeSettings(settings);
   return settings.s3Configs[index];
 }
@@ -69,12 +75,13 @@ export async function deleteS3Config(id: string): Promise<boolean> {
 
 export async function getS3Config(id: string): Promise<S3ConfigProfile | null> {
   const settings = await readSettings();
-  return settings.s3Configs.find((c) => c.id === id) || null;
+  const config = settings.s3Configs.find((c) => c.id === id) || null;
+  return config ? normalizeConfig(config) : null;
 }
 
 export async function getAllS3Configs(): Promise<S3ConfigProfile[]> {
   const settings = await readSettings();
-  return settings.s3Configs;
+  return settings.s3Configs.map(normalizeConfig);
 }
 
 export function s3ConfigToStorageConfig(config: S3ConfigProfile): S3StorageConfig {

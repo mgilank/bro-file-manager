@@ -6,6 +6,32 @@
 
 ---
 
+## Updates
+
+- Fixed S3 API client paths to avoid `/api/api` and aligned toast usage in `S3SettingsPage`.
+- Refined S3 settings action button colors and ensured test errors surface even with success toasts.
+- Routed S3 settings toasts through the global toast renderer so errors show in UI.
+- Fixed S3 uploads to use the S3 API when in S3 mode.
+- Prevented unnecessary S3 connection modal when switching to S3 if already connected.
+- Added `/s3` route so S3 file manager stays on refresh.
+- Normalized S3 list entries to app entry shape to prevent "Invalid Date".
+- Routed folder creation to S3 API when in S3 mode.
+- Avoided local trash/image endpoints in S3 mode and wired S3 image previews.
+- Tightened S3 settings header spacing to reduce scroll.
+- Guarded invalid endpoint values when rendering hostname in S3 settings list.
+- Prefill access/secret keys on edit by fetching full config details.
+- Added a plus action in the storage switcher for opening the S3 connection modal and boosted switcher contrast.
+- Removed switcher shadows/scale animations for a lighter look.
+- Disabled hover shadows on the storage switcher buttons; color only.
+- Allowed switching between S3 configs from the connection modal while already connected.
+- Added multi-connection S3 support with `/s3/:configId` routing and max connections via `S3_MAX_CONNECTIONS`.
+- Added activate/deactivate control for saved S3 configs without deleting.
+- Tightened saved config action row layout in S3 settings cards.
+- Moved delete control to the card header for saved configs.
+- Refreshes S3 connection state when configs are deactivated to avoid broken views.
+
+---
+
 ## Backend Tasks
 
 ### [ ] Task 1: Create Storage Abstraction Layer

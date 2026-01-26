@@ -718,6 +718,17 @@ select:disabled {
   box-shadow: none;
 }
 
+/* Storage switcher: keep light, no hover lift/shadow */
+.storage-switcher button {
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.storage-switcher button:hover,
+.storage-switcher button:focus-visible {
+  transform: none;
+  box-shadow: none;
+}
+
 button.filters-toggle {
   padding: 6px;
   width: 36px;

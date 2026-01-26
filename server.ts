@@ -67,6 +67,7 @@ const ARCHIVE_LARGE_BYTES =
     ? ARCHIVE_LARGE_MB * 1024 * 1024
     : 100 * 1024 * 1024;
 const AUDIT_LOG_PATH = process.env.AUDIT_LOG_PATH?.trim() ?? path.join(process.cwd(), "audit.log");
+const S3_MAX_CONNECTIONS = Math.max(1, Number(process.env.S3_MAX_CONNECTIONS ?? "5") || 5);
 const SESSION_COOKIE_BASE_OPTIONS = {
   httpOnly: true,
   sameSite: "Strict",
@@ -116,24 +117,69 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
 const USERS = await loadUsers();
 const USER_MAP = new Map(USERS.map((user) => [user.username, user]));
 
-// S3 session storage
-const s3Sessions = new Map<string, { configId: string; adapter: S3StorageAdapter }>();
+// S3 session storage (multiple configs per user session)
+type S3SessionEntry = { configId: string; adapter: S3StorageAdapter };
+const s3Sessions = new Map<string, Map<string, S3SessionEntry>>();
 
-function setSessionS3(sessionId: string, configId: string, adapter: S3StorageAdapter) {
-  s3Sessions.set(sessionId, { configId, adapter });
-}
-
-function getSessionS3(sessionId: string): { configId: string; adapter: S3StorageAdapter } | undefined {
+function getSessionS3(sessionId: string): Map<string, S3SessionEntry> | undefined {
   return s3Sessions.get(sessionId);
 }
 
-function clearSessionS3(sessionId: string) {
-  s3Sessions.delete(sessionId);
+function ensureSessionS3(sessionId: string): Map<string, S3SessionEntry> {
+  let sessionMap = s3Sessions.get(sessionId);
+  if (!sessionMap) {
+    sessionMap = new Map();
+    s3Sessions.set(sessionId, sessionMap);
+  }
+  return sessionMap;
+}
+
+function setSessionS3(sessionId: string, configId: string, adapter: S3StorageAdapter) {
+  const sessionMap = ensureSessionS3(sessionId);
+  sessionMap.set(configId, { configId, adapter });
+}
+
+function clearSessionS3(sessionId: string, configId?: string) {
+  if (!configId) {
+    s3Sessions.delete(sessionId);
+    return;
+  }
+  const sessionMap = s3Sessions.get(sessionId);
+  if (!sessionMap) return;
+  sessionMap.delete(configId);
+  if (sessionMap.size === 0) {
+    s3Sessions.delete(sessionId);
+  }
+}
+
+async function getConnectedS3Configs(sessionId: string) {
+  const sessionMap = s3Sessions.get(sessionId);
+  if (!sessionMap) return [];
+  const configs = await getAllS3Configs();
+  const configsById = new Map(configs.map((config) => [config.id, config]));
+  const connected: typeof configs = [];
+  for (const configId of sessionMap.keys()) {
+    const config = configsById.get(configId);
+    if (config && config.active !== false) {
+      connected.push(config);
+    } else {
+      sessionMap.delete(configId);
+    }
+  }
+  if (sessionMap.size === 0) {
+    s3Sessions.delete(sessionId);
+  }
+  return connected;
+}
+
+function getS3ConfigIdFromRequest(c: any, fallback?: { configId?: string }) {
+  return fallback?.configId ?? c.req.query("configId") ?? c.req.header("x-s3-config-id");
 }
 
 async function getS3Adapter(configId: string): Promise<S3StorageAdapter | null> {
   const config = await getS3Config(configId);
   if (!config) return null;
+  if (config.active === false) return null;
   return new S3StorageAdapter(s3ConfigToStorageConfig(config));
 }
 
@@ -1159,49 +1205,56 @@ app.post("/api/s3/connect", async (c) => {
     return c.json({ error: "Missing configId" }, 400);
   }
 
+  const sessionKey = session.user + ":" + session.role;
+  const sessionMap = ensureSessionS3(sessionKey);
+  if (sessionMap.has(configId)) {
+    const connectedConfigs = await getConnectedS3Configs(sessionKey);
+    const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
+    return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
+  }
+  if (sessionMap.size >= S3_MAX_CONNECTIONS) {
+    return c.json({ error: "Maximum S3 connections reached", maxConnections: S3_MAX_CONNECTIONS }, 400);
+  }
+
   const adapter = await getS3Adapter(configId);
   if (!adapter) {
     return c.json({ error: "Configuration not found" }, 404);
   }
 
-  setSessionS3(session.user + ":" + session.role, configId, adapter);
+  setSessionS3(sessionKey, configId, adapter);
 
   await auditLog(c, "s3_connected", { username: session.user, configId });
 
-  return c.json({ success: true });
+  const connectedConfigs = await getConnectedS3Configs(sessionKey);
+  const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
+  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
 });
 
 app.post("/api/s3/disconnect", async (c) => {
   const session = c.get("session");
+  const body = await readJsonBody<{ configId?: string }>(c);
+  const configId = getS3ConfigIdFromRequest(c, body ?? undefined);
 
-  clearSessionS3(session.user + ":" + session.role);
+  clearSessionS3(session.user + ":" + session.role, configId);
 
-  return c.json({ success: true });
+  const connectedConfigs = await getConnectedS3Configs(session.user + ":" + session.role);
+  const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
+  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
 });
 
 app.get("/api/s3/current", async (c) => {
   const session = c.get("session");
 
-  const s3Session = getSessionS3(session.user + ":" + session.role);
-  if (!s3Session) {
-    return c.json({ connected: false });
-  }
+  const connectedConfigs = await getConnectedS3Configs(session.user + ":" + session.role);
+  const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
+  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
+});
 
-  const config = await getS3Config(s3Session.configId);
-  if (!config) {
-    clearSessionS3(session.user + ":" + session.role);
-    return c.json({ connected: false });
-  }
-
-  return c.json({
-    connected: true,
-    config: {
-      id: config.id,
-      name: config.name,
-      bucket: config.bucket,
-      region: config.region,
-    },
-  });
+app.get("/api/s3/connections", async (c) => {
+  const session = c.get("session");
+  const connectedConfigs = await getConnectedS3Configs(session.user + ":" + session.role);
+  const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
+  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
 });
 
 // ============================================================================
@@ -1209,20 +1262,29 @@ app.get("/api/s3/current", async (c) => {
 // ============================================================================
 
 // Helper to verify S3 session
-async function requireS3Session(c: any, session: SessionContext):
-  Promise<{ adapter: S3StorageAdapter } | { error: string; status: number }>
-{
-  const s3Session = getSessionS3(session.user + ":" + session.role);
-  if (!s3Session) {
+async function requireS3Session(
+  c: any,
+  session: SessionContext,
+  configId?: string
+): Promise<{ adapter: S3StorageAdapter; configId: string } | { error: string; status: number }> {
+  const sessionKey = session.user + ":" + session.role;
+  const targetId = configId ?? getS3ConfigIdFromRequest(c);
+  if (!targetId) {
+    return { error: "Missing configId", status: 400 };
+  }
+  const s3Session = getSessionS3(sessionKey);
+  const entry = s3Session?.get(targetId);
+  if (!entry) {
     return { error: "Not connected to S3", status: 400 };
   }
 
-  return { adapter: s3Session.adapter };
+  return { adapter: entry.adapter, configId: targetId };
 }
 
 app.get("/api/s3/list", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const configId = getS3ConfigIdFromRequest(c);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1240,7 +1302,8 @@ app.get("/api/s3/list", async (c) => {
 
 app.get("/api/s3/download", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const configId = getS3ConfigIdFromRequest(c);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1264,7 +1327,8 @@ app.get("/api/s3/download", async (c) => {
 
 app.get("/api/s3/preview", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const configId = getS3ConfigIdFromRequest(c);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1288,7 +1352,8 @@ app.get("/api/s3/preview", async (c) => {
 
 app.get("/api/s3/image", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const configId = getS3ConfigIdFromRequest(c);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1310,7 +1375,8 @@ app.get("/api/s3/image", async (c) => {
 
 app.get("/api/s3/edit", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const configId = getS3ConfigIdFromRequest(c);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1340,7 +1406,9 @@ app.get("/api/s3/edit", async (c) => {
 
 app.put("/api/s3/edit", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const body = await c.req.json();
+  const configId = getS3ConfigIdFromRequest(c, body ?? undefined);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1348,7 +1416,7 @@ app.put("/api/s3/edit", async (c) => {
     return c.json({ error: "Read-only users cannot edit files" }, 403);
   }
 
-  const { path, content } = await c.req.json();
+  const { path, content } = body;
   if (!path || content === undefined) {
     return c.json({ error: "Missing path or content" }, 400);
   }
@@ -1364,7 +1432,9 @@ app.put("/api/s3/edit", async (c) => {
 
 app.post("/api/s3/upload", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const formData = await c.req.formData();
+  const configId = getS3ConfigIdFromRequest(c, { configId: formData.get("configId") as string });
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1372,7 +1442,6 @@ app.post("/api/s3/upload", async (c) => {
     return c.json({ error: "Read-only users cannot upload files" }, 403);
   }
 
-  const formData = await c.req.formData();
   const file = formData.get("file") as File;
   const path = formData.get("path") as string;
 
@@ -1395,7 +1464,8 @@ app.post("/api/s3/upload", async (c) => {
 
 app.delete("/api/s3/delete", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const configId = getS3ConfigIdFromRequest(c);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1417,7 +1487,9 @@ app.delete("/api/s3/delete", async (c) => {
 
 app.post("/api/s3/move", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const body = await c.req.json();
+  const configId = getS3ConfigIdFromRequest(c, body ?? undefined);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1425,7 +1497,7 @@ app.post("/api/s3/move", async (c) => {
     return c.json({ error: "Read-only users cannot move files" }, 403);
   }
 
-  const { source, destination } = await c.req.json();
+  const { source, destination } = body;
   if (!source || !destination) {
     return c.json({ error: "Missing source or destination" }, 400);
   }
@@ -1441,7 +1513,9 @@ app.post("/api/s3/move", async (c) => {
 
 app.post("/api/s3/copy", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const body = await c.req.json();
+  const configId = getS3ConfigIdFromRequest(c, body ?? undefined);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1449,7 +1523,7 @@ app.post("/api/s3/copy", async (c) => {
     return c.json({ error: "Read-only users cannot copy files" }, 403);
   }
 
-  const { source, destination } = await c.req.json();
+  const { source, destination } = body;
   if (!source || !destination) {
     return c.json({ error: "Missing source or destination" }, 400);
   }
@@ -1465,7 +1539,9 @@ app.post("/api/s3/copy", async (c) => {
 
 app.post("/api/s3/mkdir", async (c) => {
   const session = c.get("session");
-  const result = await requireS3Session(c, session);
+  const body = await c.req.json();
+  const configId = getS3ConfigIdFromRequest(c, body ?? undefined);
+  const result = await requireS3Session(c, session, configId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
 
   const { adapter } = result;
@@ -1473,7 +1549,7 @@ app.post("/api/s3/mkdir", async (c) => {
     return c.json({ error: "Read-only users cannot create directories" }, 403);
   }
 
-  const { path } = await c.req.json();
+  const { path } = body;
   if (!path) return c.json({ error: "Missing path" }, 400);
 
   try {

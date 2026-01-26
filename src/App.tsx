@@ -48,6 +48,7 @@ import type {
   Entry,
   ListResponse,
   Preview,
+  S3Config,
   S3ConnectionState,
   SortMode,
   StorageMode,
@@ -167,11 +168,23 @@ export default function App() {
     return (stored === "s3" ? "s3" : "local") as StorageMode;
   });
   const [showS3Connection, setShowS3Connection] = useState(false);
-  const [s3Connection, setS3Connection] = useState<S3ConnectionState>({ connected: false });
+  const [s3Connection, setS3Connection] = useState<S3ConnectionState>({ connected: false, configs: [] });
+  const [activeS3ConfigId, setActiveS3ConfigId] = useState<string | null>(null);
+  const [s3Paths, setS3Paths] = useState<Record<string, string>>({});
   const [pendingS3Connect, setPendingS3Connect] = useState(false);
-  const [route, setRoute] = useState<"files" | "s3">(() => {
+  const [route, setRoute] = useState<"files" | "s3" | "s3-settings">(() => {
     if (typeof window === "undefined") return "files";
-    return window.location.pathname === "/s3-settings" ? "s3" : "files";
+    if (window.location.pathname === "/s3-settings") return "s3-settings";
+    if (window.location.pathname.startsWith("/s3/") || window.location.pathname === "/s3") return "s3";
+    return "files";
+  });
+  const [routeS3ConfigId, setRouteS3ConfigId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    if (window.location.pathname.startsWith("/s3/")) {
+      const [, , configId] = window.location.pathname.split("/");
+      return configId || null;
+    }
+    return null;
   });
 
   const [theme, setTheme] = useTheme();
@@ -202,97 +215,129 @@ export default function App() {
     onError: notifyError,
   });
 
-  const loadPath = useCallback(async (targetPath: string, modeOverride?: StorageMode, s3ConnectedOverride?: boolean) => {
-    setLoading(true);
-    setError(null);
-    setSelected(null);
-    setPreview(null);
-    setTextPreviewOpen(false);
-    setImagePreviewPath(null);
-    setImagePreviewName(null);
-    setSelectedNames([]);
-    setShowTrash(false);
-    setDragActive(false);
+  const loadPath = useCallback(
+    async (
+      targetPath: string,
+      modeOverride?: StorageMode,
+      s3ConnectedOverride?: boolean,
+      s3ConfigIdOverride?: string | null
+    ) => {
+      setLoading(true);
+      setError(null);
+      setSelected(null);
+      setPreview(null);
+      setTextPreviewOpen(false);
+      setImagePreviewPath(null);
+      setImagePreviewName(null);
+      setSelectedNames([]);
+      setShowTrash(false);
+      setDragActive(false);
 
-    let activeMode = modeOverride ?? storageMode;
-    const s3Connected = s3ConnectedOverride ?? s3Connection.connected;
-    if (activeMode === "s3" && !s3Connected) {
-      activeMode = "local";
-      if (storageMode !== "local") {
-        setStorageMode("local");
-      }
-    }
-
-    if (activeMode === "s3") {
-      // S3 mode
-      const params = new URLSearchParams({
-        path: targetPath,
-        limit: pageSize.toString(),
-        offset: ((page - 1) * pageSize).toString(),
-      });
-
-      try {
-        const response = await fetch(`${API_BASE}/api/s3/list?${params}`, {
-          credentials: "include",
-        });
-
-        if (response.status === 401) {
-          setAuth("logged_out");
-          setLoading(false);
-          return false;
-        }
-
-        if (!response.ok) {
-          const data = await readJson(response);
-          setError(data?.error ?? "Failed to load S3 directory.");
-          setLoading(false);
-          return false;
-        }
-
-        const data = await response.json();
-        setEntries(data.entries || []);
-        setPath(targetPath);
-        // Calculate parent path for S3
-        const segments = targetPath.split("/").filter(Boolean);
-        segments.pop();
-        setParent(segments.length > 0 ? `/${segments.join("/")}` : null);
-        setLoading(false);
-        return true;
-      } catch (err) {
-        setError("Failed to load S3 directory.");
+      let activeMode = modeOverride ?? storageMode;
+      const activeConfigId = s3ConfigIdOverride ?? activeS3ConfigId ?? routeS3ConfigId;
+      const isS3Connected = Boolean(
+        activeConfigId && s3Connection.configs.some((config) => config.id === activeConfigId)
+      );
+      const s3Connected = s3ConnectedOverride ?? isS3Connected;
+      if (activeMode === "s3" && !s3Connected) {
+        setError("Connect to S3 to continue.");
         setLoading(false);
         return false;
       }
-    }
 
-    // Local mode - existing code
-    const response = await apiFetch(`/list?path=${encodeURIComponent(targetPath)}&limit=${pageSize}&offset=${(page - 1) * pageSize}`);
-    if (response.status === 401) {
-      setAuth("logged_out");
+      if (activeMode === "s3") {
+        if (!activeConfigId) {
+          setError("Select an S3 configuration.");
+          setLoading(false);
+          return false;
+        }
+        // S3 mode
+        const params = new URLSearchParams({
+          path: targetPath,
+          configId: activeConfigId,
+          limit: pageSize.toString(),
+          offset: ((page - 1) * pageSize).toString(),
+        });
+
+        try {
+          const response = await fetch(`${API_BASE}/s3/list?${params}`, {
+            credentials: "include",
+          });
+
+          if (response.status === 401) {
+            setAuth("logged_out");
+            setLoading(false);
+            return false;
+          }
+
+          if (!response.ok) {
+            const data = await readJson(response);
+            setError(data?.error ?? "Failed to load S3 directory.");
+            setLoading(false);
+            return false;
+          }
+
+          const data = await response.json();
+          const mappedEntries = (data.entries || []).map((entry: any) => {
+            const rawDate = entry.modified ?? entry.mtime;
+            const parsed = rawDate ? new Date(rawDate).getTime() : Date.now();
+            return {
+              name: entry.name,
+              type: entry.type === "directory" ? "dir" : "file",
+              size: entry.size ?? 0,
+              mtime: Number.isNaN(parsed) ? Date.now() : parsed,
+            };
+          });
+          setEntries(mappedEntries);
+          setPath(targetPath);
+          setS3Paths((prev) => ({ ...prev, [activeConfigId]: targetPath }));
+          // Calculate parent path for S3
+          const segments = targetPath.split("/").filter(Boolean);
+          segments.pop();
+          setParent(segments.length > 0 ? `/${segments.join("/")}` : null);
+          setLoading(false);
+          return true;
+        } catch (err) {
+          setError("Failed to load S3 directory.");
+          setLoading(false);
+          return false;
+        }
+      }
+
+      // Local mode - existing code
+      const response = await apiFetch(`/list?path=${encodeURIComponent(targetPath)}&limit=${pageSize}&offset=${(page - 1) * pageSize}`);
+      if (response.status === 401) {
+        setAuth("logged_out");
+        setLoading(false);
+        return false;
+      }
+
+      if (!response.ok) {
+        const data = await readJson(response);
+        setError(data?.error ?? "Failed to load directory.");
+        setLoading(false);
+        return false;
+      }
+
+      const data = (await response.json()) as ListResponse;
+      setEntries(data.entries);
+      setPath(data.path);
+      setParent(data.parent);
+      setUsername(data.user);
+      setUserRole(data.role);
+      setAuth("authed");
       setLoading(false);
-      return false;
-    }
-
-    if (!response.ok) {
-      const data = await readJson(response);
-      setError(data?.error ?? "Failed to load directory.");
-      setLoading(false);
-      return false;
-    }
-
-    const data = (await response.json()) as ListResponse;
-    setEntries(data.entries);
-    setPath(data.path);
-    setParent(data.parent);
-    setUsername(data.user);
-    setUserRole(data.role);
-    setAuth("authed");
-    setLoading(false);
-    setStoredPath(data.path);
-    return true;
-  }, [storageMode, s3Connection.connected, page, pageSize]);
+      setStoredPath(data.path);
+      return true;
+    },
+    [storageMode, s3Connection.configs, activeS3ConfigId, routeS3ConfigId, page, pageSize]
+  );
 
   const loadTrash = useCallback(async () => {
+    if (storageMode === "s3") {
+      notifyError("Trash is not available for S3 storage.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setSelected(null);
@@ -323,7 +368,7 @@ export default function App() {
     setShowTrash(true);
     setAuth("authed");
     setLoading(false);
-  }, []);
+  }, [storageMode, notifyError]);
 
   const handleLogin = useCallback(
     async (event: FormEvent) => {
@@ -620,11 +665,41 @@ export default function App() {
         notifyError("Read-only account.");
         return;
       }
+      if (storageMode === "s3") {
+        const isConnected = Boolean(
+          activeS3ConfigId && s3Connection.configs.some((config) => config.id === activeS3ConfigId)
+        );
+        if (!isConnected) {
+          notifyError("Connect to S3 before uploading.");
+          return;
+        }
+      }
       if (files.length === 0) {
         return;
       }
       setActionLoading(true);
       setError(null);
+
+      if (storageMode === "s3") {
+        if (!activeS3ConfigId) {
+          notifyError("Select an S3 configuration.");
+          setActionLoading(false);
+          return;
+        }
+        const targetPath = path.endsWith("/") ? path : `${path}/`;
+        for (const file of files) {
+          const result = await s3Api.s3Upload(activeS3ConfigId, file, targetPath);
+          if (result?.error) {
+            notifyError(result.error ?? "Upload failed.");
+            setActionLoading(false);
+            return;
+          }
+        }
+        await refreshView();
+        setActionLoading(false);
+        pushToast(`Uploaded ${files.length} file(s).`, "success");
+        return;
+      }
 
       const form = new FormData();
       form.set("path", path);
@@ -660,7 +735,7 @@ export default function App() {
       setActionLoading(false);
       pushToast(`Uploaded ${files.length} file(s).`, "success");
     },
-    [path, refreshView, canWrite, notifyError, pushToast]
+    [path, refreshView, canWrite, notifyError, pushToast, storageMode, s3Connection.configs, activeS3ConfigId]
   );
 
   const handleUploadChange = useCallback(
@@ -683,23 +758,46 @@ export default function App() {
     setActionLoading(true);
     setError(null);
 
-    const response = await apiFetch("/mkdir", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, name }),
-    });
+    if (storageMode === "s3") {
+      const isConnected = Boolean(
+        activeS3ConfigId && s3Connection.configs.some((config) => config.id === activeS3ConfigId)
+      );
+      if (!isConnected) {
+        notifyError("Connect to S3 before creating folders.");
+        setActionLoading(false);
+        return;
+      }
+      if (!activeS3ConfigId) {
+        notifyError("Select an S3 configuration.");
+        setActionLoading(false);
+        return;
+      }
+      const targetPath = joinPath(path, name);
+      const result = await s3Api.s3Mkdir(activeS3ConfigId, targetPath);
+      if (result?.error) {
+        notifyError(result.error ?? "Failed to create folder.");
+        setActionLoading(false);
+        return;
+      }
+    } else {
+      const response = await apiFetch("/mkdir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, name }),
+      });
 
-    if (!response.ok) {
-      const data = await readJson(response);
-      notifyError(data?.error ?? "Failed to create folder.");
-      setActionLoading(false);
-      return;
+      if (!response.ok) {
+        const data = await readJson(response);
+        notifyError(data?.error ?? "Failed to create folder.");
+        setActionLoading(false);
+        return;
+      }
     }
 
     await refreshView();
     setActionLoading(false);
     pushToast("Folder created.", "success");
-  }, [path, refreshView, requireWrite, notifyError, pushToast]);
+  }, [path, refreshView, requireWrite, notifyError, pushToast, storageMode, s3Connection.configs, activeS3ConfigId]);
 
   const handleRename = useCallback(async () => {
     if (!requireWrite()) {
@@ -833,12 +931,45 @@ export default function App() {
       notifyError("Select items to delete.");
       return;
     }
-    const confirmation = window.confirm(`Move ${selectionTargets.length} item(s) to Trash?`);
+    const confirmation = window.confirm(
+      storageMode === "s3"
+        ? `Permanently delete ${selectionTargets.length} item(s)?`
+        : `Move ${selectionTargets.length} item(s) to Trash?`
+    );
     if (!confirmation) {
       return;
     }
     setActionLoading(true);
     setError(null);
+
+    if (storageMode === "s3") {
+      const isConnected = Boolean(
+        activeS3ConfigId && s3Connection.configs.some((config) => config.id === activeS3ConfigId)
+      );
+      if (!isConnected) {
+        notifyError("Connect to S3 before deleting.");
+        setActionLoading(false);
+        return;
+      }
+      if (!activeS3ConfigId) {
+        notifyError("Select an S3 configuration.");
+        setActionLoading(false);
+        return;
+      }
+      for (const entry of selectionTargets) {
+        const result = await s3Api.s3Delete(activeS3ConfigId, joinPath(path, entry.name));
+        if (result?.error) {
+          notifyError(result.error ?? "Delete failed.");
+          setActionLoading(false);
+          return;
+        }
+      }
+
+      await refreshView();
+      setActionLoading(false);
+      pushToast(`Deleted ${selectionTargets.length} item(s).`, "success");
+      return;
+    }
 
     for (const entry of selectionTargets) {
       const response = await apiFetch("/trash", {
@@ -858,7 +989,7 @@ export default function App() {
     await refreshView();
     setActionLoading(false);
     pushToast(`Moved ${selectionTargets.length} item(s) to trash.`, "success");
-  }, [path, selectionTargets, refreshView, requireWrite, notifyError, pushToast]);
+  }, [path, selectionTargets, refreshView, requireWrite, notifyError, pushToast, storageMode, s3Connection.configs, activeS3ConfigId]);
 
   const archiveHref = useMemo(() => {
     if (selectionTargets.length === 0) {
@@ -908,12 +1039,16 @@ export default function App() {
   );
 
   const handleToggleTrash = useCallback(() => {
+    if (storageMode === "s3") {
+      notifyError("Trash is not available for S3 storage.");
+      return;
+    }
     if (showTrash) {
       loadPath(path);
     } else {
       loadTrash();
     }
-  }, [showTrash, loadPath, loadTrash, path]);
+  }, [showTrash, loadPath, loadTrash, path, storageMode, notifyError]);
 
   const handleDragEnter = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -1110,6 +1245,8 @@ export default function App() {
     return crumbs;
   }, [path]);
   const currentPathLabel = breadcrumbs[breadcrumbs.length - 1]?.label ?? "Home";
+  const imageBasePath = storageMode === "s3" ? `${API_BASE}/s3/image` : `${API_BASE}/image`;
+  const imageConfigId = storageMode === "s3" ? activeS3ConfigId : null;
 
   const filtersActive =
     typeFilter !== "all" ||
@@ -1119,7 +1256,133 @@ export default function App() {
     sortMode !== "default" ||
     contentSearch;
 
-  const showS3SettingsPage = auth === "authed" && userRole === "admin" && route === "s3";
+  const showS3SettingsPage = auth === "authed" && userRole === "admin" && route === "s3-settings";
+
+  const refreshS3Connections = useCallback(async () => {
+    try {
+      const response = await s3Api.s3ListConnections();
+      setS3Connection({
+        connected: Boolean(response?.connected),
+        configs: response?.configs ?? [],
+        maxConnections: response?.maxConnections,
+      });
+      return response;
+    } catch {
+      setS3Connection({ connected: false, configs: [] });
+      return null;
+    }
+  }, []);
+
+  const setFilesRoute = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.history.pushState(null, "", "/");
+    }
+    setRoute("files");
+    setRouteS3ConfigId(null);
+  }, []);
+
+  const setS3Route = useCallback((configId: string | null) => {
+    if (typeof window !== "undefined") {
+      const target = configId ? `/s3/${configId}` : "/s3";
+      window.history.pushState(null, "", target);
+    }
+    setRoute("s3");
+    setRouteS3ConfigId(configId);
+  }, []);
+
+  const switchToLocal = useCallback(() => {
+    setPendingS3Connect(false);
+    setStorageMode("local");
+    setActiveS3ConfigId(null);
+    setPath("/");
+    setPage(1);
+    setSelected(null);
+    setSelectedNames([]);
+    setFilesRoute();
+    void loadPath("/", "local");
+  }, [loadPath, setFilesRoute]);
+
+  const switchToS3 = useCallback(
+    (configId: string) => {
+      setPendingS3Connect(false);
+      setStorageMode("s3");
+      setActiveS3ConfigId(configId);
+      setPath("/");
+      setPage(1);
+      setSelected(null);
+      setSelectedNames([]);
+      setS3Route(configId);
+      const nextPath = s3Paths[configId] ?? "/";
+      void loadPath(nextPath, "s3", true, configId);
+    },
+    [loadPath, setS3Route, s3Paths]
+  );
+
+  const handleStorageModeChange = useCallback(
+    (mode: StorageMode) => {
+      if (mode === "local") {
+        switchToLocal();
+        return;
+      }
+      setPendingS3Connect(true);
+      refreshS3Connections().then((response) => {
+        const configs = (response?.configs ?? s3Connection.configs) as S3Config[];
+        const nextId = activeS3ConfigId ?? routeS3ConfigId ?? configs[0]?.id;
+        if (nextId && configs.some((config) => config.id === nextId)) {
+          switchToS3(nextId);
+          return;
+        }
+        setShowS3Connection(true);
+      });
+    },
+    [activeS3ConfigId, routeS3ConfigId, refreshS3Connections, s3Connection.configs, switchToLocal, switchToS3]
+  );
+
+  useEffect(() => {
+    if (auth !== "authed") {
+      return;
+    }
+    if (route === "s3") {
+      const nextId = routeS3ConfigId ?? activeS3ConfigId;
+      if (nextId && s3Connection.configs.some((config) => config.id === nextId)) {
+        if (storageMode !== "s3" || activeS3ConfigId !== nextId) {
+          switchToS3(nextId);
+        }
+        return;
+      }
+      setPendingS3Connect(true);
+      setShowS3Connection(true);
+      return;
+    }
+    if (route === "files" && storageMode !== "local") {
+      switchToLocal();
+    }
+  }, [route, routeS3ConfigId, activeS3ConfigId, s3Connection.configs, storageMode, auth, switchToS3, switchToLocal]);
+
+  useEffect(() => {
+    if (!activeS3ConfigId) {
+      return;
+    }
+    const stillConnected = s3Connection.configs.some((config) => config.id === activeS3ConfigId);
+    if (stillConnected) {
+      return;
+    }
+    setActiveS3ConfigId(null);
+    setRouteS3ConfigId(null);
+    setEntries([]);
+    setPath("/");
+    setParent(null);
+    if (route === "s3") {
+      setPendingS3Connect(true);
+      setShowS3Connection(true);
+      pushToast("Active S3 config was deactivated. Select another connection.", "error");
+      return;
+    }
+    if (storageMode === "s3") {
+      setStorageMode("local");
+    }
+    pushToast("Active S3 config was deactivated.", "info");
+  }, [activeS3ConfigId, s3Connection.configs, route, storageMode, pushToast]);
 
   useKeyboardShortcuts({
     enabled: SHORTCUTS_ENABLED && !showS3SettingsPage,
@@ -1191,26 +1454,39 @@ export default function App() {
     } catch { }
   }, [storageMode]);
 
-  // Check S3 connection status when storage mode is S3
+  // Sync S3 connection status
   useEffect(() => {
-    if (storageMode === "s3" && auth === "authed") {
-      s3Api.s3GetCurrentConnection()
-        .then(setS3Connection)
-        .catch(() => setS3Connection({ connected: false }));
+    if (auth === "authed") {
+      void refreshS3Connections();
+      return;
     }
-  }, [storageMode, auth]);
+    setS3Connection({ connected: false, configs: [] });
+  }, [auth, refreshS3Connections]);
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
     const handlePopState = () => {
-      setRoute(window.location.pathname === "/s3-settings" ? "s3" : "files");
+      if (window.location.pathname === "/s3-settings") {
+        setRoute("s3-settings");
+        setRouteS3ConfigId(null);
+      } else if (window.location.pathname.startsWith("/s3/")) {
+        const [, , configId] = window.location.pathname.split("/");
+        setRoute("s3");
+        setRouteS3ConfigId(configId || null);
+      } else if (window.location.pathname === "/s3") {
+        setRoute("s3");
+        setRouteS3ConfigId(null);
+      } else {
+        setRoute("files");
+        setRouteS3ConfigId(null);
+      }
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   useEffect(() => {
-    if (auth === "authed" && route === "s3" && userRole !== "admin") {
+    if (auth === "authed" && route === "s3-settings" && userRole !== "admin") {
       setRoute("files");
       if (typeof window !== "undefined") {
         window.history.replaceState(null, "", "/");
@@ -1223,13 +1499,15 @@ export default function App() {
       window.history.pushState(null, "", "/");
     }
     setRoute("files");
+    setRouteS3ConfigId(null);
   }, []);
 
   const navigateToS3Settings = useCallback(() => {
     if (typeof window !== "undefined") {
       window.history.pushState(null, "", "/s3-settings");
     }
-    setRoute("s3");
+    setRoute("s3-settings");
+    setRouteS3ConfigId(null);
   }, []);
 
   return (
@@ -1256,6 +1534,8 @@ export default function App() {
       <ImagePreviewModal
         path={imagePreviewPath}
         name={imagePreviewName}
+        imageBasePath={imageBasePath}
+        imageConfigId={imageConfigId}
         onClose={closeImagePreview}
         onError={handleImageError}
       />
@@ -1291,21 +1571,23 @@ export default function App() {
         {auth === "authed" && (
           <StorageSwitcher
             mode={storageMode}
-            onModeChange={(mode) => {
-              if (mode === "s3" && !s3Connection.connected) {
-                setShowS3Connection(true);
+            onModeChange={handleStorageModeChange}
+            onSelectS3={(configId) => {
+              if (!s3Connection.configs.some((config) => config.id === configId)) {
                 setPendingS3Connect(true);
+                setShowS3Connection(true);
+                setRouteS3ConfigId(configId);
                 return;
               }
-              setPendingS3Connect(false);
-              setStorageMode(mode);
-              setPath("/");
-              setPage(1);
-              setSelected(null);
-              setSelectedNames([]);
+              switchToS3(configId);
             }}
-            s3Connected={s3Connection.connected}
-            s3ConfigName={s3Connection.config?.name}
+            onAddS3={() => {
+              setPendingS3Connect(false);
+              setShowS3Connection(true);
+            }}
+            s3Configs={s3Connection.configs}
+            activeS3ConfigId={activeS3ConfigId}
+            maxS3Connections={s3Connection.maxConnections}
           />
         )}
 
@@ -1321,7 +1603,11 @@ export default function App() {
         ) : (
           <div className="stack">
             {showS3SettingsPage ? (
-              <S3SettingsPage onBack={navigateToFiles} />
+              <S3SettingsPage
+                onBack={navigateToFiles}
+                onToast={pushToast}
+                onConfigsChanged={refreshS3Connections}
+              />
             ) : (
               <>
                 <Toolbar
@@ -1394,6 +1680,8 @@ export default function App() {
                   actionLoading={actionLoading}
                   canWrite={canWrite}
                   sortMode={sortMode}
+                  imageBasePath={imageBasePath}
+                  imageConfigId={imageConfigId}
                   onSortModeChange={setSortMode}
                   pagination={{
                     page,
@@ -1421,24 +1709,16 @@ export default function App() {
           setShowS3Connection(false);
           setPendingS3Connect(false);
         }}
-        onConnected={async () => {
-          const conn = await s3Api.s3GetCurrentConnection();
-          setS3Connection(conn);
-          if (conn.connected) {
-            setStorageMode("s3");
-            setPendingS3Connect(false);
-            setPath("/");
-            setPage(1);
-            setSelected(null);
-            setSelectedNames([]);
-            loadPath("/", "s3", true);
-          } else {
-            if (storageMode !== "local" || pendingS3Connect) {
-              setStorageMode("local");
-            }
-            setPendingS3Connect(false);
-            loadPath(path, "local");
+        initialConfigId={routeS3ConfigId}
+        onConnected={async (configId) => {
+          const response = await refreshS3Connections();
+          const nextId = configId ?? routeS3ConfigId ?? response?.configs?.[0]?.id ?? null;
+          if (nextId) {
+            switchToS3(nextId);
+          } else if (storageMode !== "local" || pendingS3Connect) {
+            switchToLocal();
           }
+          setPendingS3Connect(false);
         }}
         userRole={userRole}
         onOpenS3Settings={() => {

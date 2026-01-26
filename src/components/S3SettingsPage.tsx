@@ -13,20 +13,23 @@ import {
   Save,
   Loader2,
   X,
-  HardDrive
+  HardDrive,
+  Power
 } from "lucide-react";
-import { useToasts } from "../hooks/useToasts";
 import {
   s3CreateConfig,
   s3DeleteConfig,
   s3ListConfigs,
+  s3GetConfig,
   s3TestConnection,
   s3UpdateConfig,
 } from "../services/api";
-import type { S3Config, S3ConfigForm } from "../types";
+import type { S3Config, S3ConfigForm, ToastTone } from "../types";
 
 interface S3SettingsPageProps {
   onBack: () => void;
+  onToast: (message: string, tone?: ToastTone) => void;
+  onConfigsChanged?: () => void;
 }
 
 interface PresetTemplate {
@@ -83,8 +86,7 @@ const EMPTY_FORM: S3ConfigForm = {
   prefix: "",
 };
 
-export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
-  const { showToast } = useToasts();
+export function S3SettingsPage({ onBack, onToast, onConfigsChanged }: S3SettingsPageProps) {
   const [configs, setConfigs] = useState<S3Config[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -103,7 +105,7 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
       const response = await s3ListConfigs();
       setConfigs(response.configs ?? []);
     } catch {
-      showToast("Failed to load S3 configurations", "error");
+      onToast("Failed to load S3 configurations", "error");
     } finally {
       setLoading(false);
     }
@@ -134,20 +136,22 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
     try {
       if (editingId) {
         await s3UpdateConfig(editingId, form);
-        showToast("S3 configuration updated", "success");
+        onToast("S3 configuration updated", "success");
       } else {
         await s3CreateConfig(form);
-        showToast("S3 configuration created", "success");
+        onToast("S3 configuration created", "success");
       }
       await loadConfigs();
       resetForm();
       setShowForm(false);
     } catch (err: any) {
-      showToast(err.message || "Failed to save configuration", "error");
+      onToast(err.message || "Failed to save configuration", "error");
     }
   };
 
-  const handleEdit = (config: S3Config) => {
+  const handleEdit = async (config: S3Config) => {
+    setEditingId(config.id);
+    setShowForm(true);
     setForm({
       name: config.name,
       region: config.region,
@@ -157,8 +161,34 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
       bucket: config.bucket,
       prefix: "",
     });
-    setEditingId(config.id);
-    setShowForm(true);
+
+    try {
+      const detail = await s3GetConfig(config.id);
+      const data = detail?.config ?? detail;
+      setForm({
+        name: data.name ?? config.name,
+        region: data.region ?? config.region,
+        endpoint: data.endpoint ?? config.endpoint ?? "",
+        accessKeyId: data.accessKeyId ?? "",
+        secretAccessKey: data.secretAccessKey ?? "",
+        bucket: data.bucket ?? config.bucket,
+        prefix: data.prefix ?? "",
+      });
+    } catch (err: any) {
+      onToast(err?.message || "Failed to load configuration details", "error");
+    }
+  };
+
+  const handleToggleActive = async (config: S3Config) => {
+    try {
+      const nextActive = config.active === false;
+      await s3UpdateConfig(config.id, { active: nextActive });
+      onToast(nextActive ? "Configuration activated" : "Configuration deactivated", "success");
+      await loadConfigs();
+      onConfigsChanged?.();
+    } catch (err: any) {
+      onToast(err.message || "Failed to update configuration", "error");
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -168,10 +198,10 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
 
     try {
       await s3DeleteConfig(id);
-      showToast("S3 configuration deleted", "success");
+      onToast("S3 configuration deleted", "success");
       await loadConfigs();
     } catch (err: any) {
-      showToast(err.message || "Failed to delete configuration", "error");
+      onToast(err.message || "Failed to delete configuration", "error");
     }
   };
 
@@ -179,13 +209,16 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
     setTestingId(id);
     try {
       const result = await s3TestConnection(id);
-      if (result.success) {
-        showToast("Connection successful!", "success");
-      } else {
-        showToast(result.error || "Connection failed", "error");
+      if (result?.error) {
+        onToast(result.error, "error");
+      }
+      if (result?.success) {
+        onToast("Connection successful!", "success");
+      } else if (!result?.error) {
+        onToast("Connection failed", "error");
       }
     } catch (err: any) {
-      showToast(err.message || "Connection test failed", "error");
+      onToast(err.message || "Connection test failed", "error");
     } finally {
       setTestingId(null);
     }
@@ -200,10 +233,10 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
 
   return (
     <div className="w-full min-h-[calc(100vh-4rem)] p-4 animate-fadeUp">
-      <div className="max-w-6xl mx-auto space-y-8">
+      <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="grid sm:flex items-center justify-between border-b border-[rgba(28,37,43,0.1)] pb-5">
-          <div className="space-y-1">
+        <div className="grid sm:flex items-center justify-between border-b border-[rgba(28,37,43,0.1)] pb-4">
+          <div className="space-y-0.5">
             <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
               <span className="cursor-pointer hover:text-[var(--ink)]" onClick={onBack}>
                 Files
@@ -211,10 +244,10 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
               <span>/</span>
               <span className="font-medium text-[var(--ink)]">Settings</span>
             </div>
-            <h1 className="text-3xl font-bold text-[var(--ink)] tracking-tight font-display">
+            <h1 className="text-2xl font-bold text-[var(--ink)] tracking-tight font-display">
               S3 Configuration
             </h1>
-            <p className="text-[var(--muted)] max-w-xl">
+            <p className="text-sm text-[var(--muted)] max-w-xl">
               Manage connection settings for AWS S3, Cloudflare R2, Backblaze B2, and other compatible services.
             </p>
           </div>
@@ -259,7 +292,7 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
                     <button
                       onClick={loadConfigs}
                       disabled={loading}
-                      className="p-2 text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[rgba(28,37,43,0.05)] rounded-full transition-colors"
+                      className="p-2 text-[var(--accent)] bg-[var(--accent-soft)] hover:bg-[var(--accent)] hover:text-white rounded-full transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                       title="Refresh list"
                     >
                       <Loader2 className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -294,11 +327,25 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
                             <p className="text-xs text-[var(--muted)] truncate">{config.bucket}</p>
                           </div>
                         </div>
-                        {config.isDefault && (
-                          <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-2)] bg-[rgba(61,143,140,0.12)] rounded-full">
-                            Default
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {config.isDefault && (
+                            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-2)] bg-[rgba(61,143,140,0.12)] rounded-full">
+                              Default
+                            </span>
+                          )}
+                          {config.active === false && (
+                            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] bg-[rgba(28,37,43,0.08)] rounded-full">
+                              Inactive
+                            </span>
+                          )}
+                          <button
+                            onClick={() => handleDelete(config.id)}
+                            className="p-1.5 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-[var(--muted)] mb-4">
@@ -309,37 +356,51 @@ export function S3SettingsPage({ onBack }: S3SettingsPageProps) {
                         {config.endpoint && (
                           <div className="flex items-center gap-1.5 truncate max-w-full" title={config.endpoint}>
                             <Server className="w-3.5 h-3.5 opacity-70" />
-                            <span className="truncate">{new URL(config.endpoint).hostname}</span>
+                            <span className="truncate">
+                              {(() => {
+                                try {
+                                  return new URL(config.endpoint).hostname;
+                                } catch {
+                                  return config.endpoint;
+                                }
+                              })()}
+                            </span>
                           </div>
                         )}
                       </div>
 
                       <div className="flex items-center gap-2 pt-3 border-t border-[rgba(28,37,43,0.06)]">
-                        <button
-                          onClick={() => handleTest(config.id)}
-                          disabled={testingId === config.id}
-                          className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-lg transition-colors ${testingId === config.id
-                            ? "text-yellow-600 bg-yellow-50"
-                            : "text-[var(--ink)] hover:bg-[rgba(28,37,43,0.05)]"
-                            }`}
-                        >
-                          {testingId === config.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
-                          Test
-                        </button>
-                        <button
-                          onClick={() => handleEdit(config)}
-                          className="flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium text-[var(--ink)] hover:bg-[rgba(28,37,43,0.05)] rounded-lg transition-colors"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(config.id)}
-                          className="p-1.5 text-[var(--muted)] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex flex-1 items-center gap-2 min-w-0">
+                          <button
+                            onClick={() => handleTest(config.id)}
+                            disabled={testingId === config.id}
+                            className={`flex-1 min-w-[86px] flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-lg transition-colors ${testingId === config.id
+                              ? "text-yellow-700 bg-yellow-100"
+                              : "text-[var(--accent)] bg-[var(--accent-soft)] hover:bg-[var(--accent)] hover:text-white"
+                              }`}
+                          >
+                            {testingId === config.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                            Test
+                          </button>
+                          <button
+                            onClick={() => handleEdit(config)}
+                            className="flex-1 min-w-[86px] flex items-center justify-center gap-2 py-1.5 text-xs font-medium text-[var(--accent-2)] bg-[var(--accent-2-soft)] hover:bg-[var(--accent-2)] hover:text-white rounded-lg transition-colors"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleToggleActive(config)}
+                            className={`flex-1 min-w-[98px] flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-lg transition-colors ${config.active === false
+                              ? "text-[var(--accent-2)] bg-[var(--accent-2-soft)] hover:bg-[var(--accent-2)] hover:text-white"
+                              : "text-[var(--muted)] bg-[rgba(28,37,43,0.06)] hover:bg-[rgba(28,37,43,0.12)]"
+                              }`}
+                          >
+                            <Power className="w-3 h-3" />
+                            {config.active === false ? "Activate" : "Deactivate"}
+                          </button>
+                        </div>
+                        
                       </div>
                     </div>
                   ))}

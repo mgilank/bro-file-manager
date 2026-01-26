@@ -3,7 +3,6 @@ import type { Entry, SortMode, TrashItem, ViewMode } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
 import { isImagePreviewable } from "../utils/fileTypes";
 import { joinPath } from "../utils/path";
-import { API_BASE } from "../constants";
 import { FileIcon, FolderIcon } from "./icons";
 import { Pagination, type PaginationProps } from "./Pagination";
 
@@ -20,6 +19,8 @@ type FileListProps = {
   actionLoading: boolean;
   canWrite: boolean;
   sortMode: SortMode;
+  imageBasePath: string;
+  imageConfigId?: string | null;
   onSortModeChange: (value: SortMode) => void;
   pagination?: PaginationProps;
   showPaginationTop?: boolean;
@@ -42,6 +43,8 @@ export function FileList({
   actionLoading,
   canWrite,
   sortMode,
+  imageBasePath,
+  imageConfigId,
   onSortModeChange,
   pagination,
   showPaginationTop = false,
@@ -188,7 +191,10 @@ export function FileList({
                     <button className="thumb-media" onClick={() => onEntryClick(entry)}>
                       {isImage ? (
                         <img
-                          src={`${API_BASE}/image?path=${encodeURIComponent(entryPath)}`}
+                          src={`${imageBasePath}?${new URLSearchParams({
+                            path: entryPath,
+                            ...(imageConfigId ? { configId: imageConfigId } : {}),
+                          })}`}
                           alt={entry.name}
                           loading="lazy"
                         />
