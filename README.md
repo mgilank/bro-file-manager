@@ -1,5 +1,3 @@
-## DO NOT USE THIS S3 BRANCH YET FOR PRODUCTION USE. IT IS STILL IN DEVELOPMENT AND MAY CONTAIN BUGS AND SECURITY VULNERABILITIES.
-
 Sponsored by [Jetorbit.com](https://jetorbit.com)
 
 ![Bro File Manager](public/brofm.jpg)
