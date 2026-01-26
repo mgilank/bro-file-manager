@@ -7,11 +7,33 @@ Sponsored by [Jetorbit.com](https://jetorbit.com)
 
 
 👨🏻 Lightweight file manager built with Bun + Hono + React. It ships with cookie-based auth, safe path resolution, and a tidy UI for browsing server folders.
+## Table of Contents
+- [Features](#features)
+- [Recent improvements](#recent-improvements)
+- [Requirements](#requirements)
+- [Setup](#setup)
+- [Configure](#configure)
+  - [Local users (recommended)](#local-users-recommended)
+- [Build the frontend 👷🏻](#build-the-frontend-)
+- [Run 🏃🏼‍♂️](#run-)
+- [S3 Integration ☁️](#s3-integration-️)
+  - [What’s included](#whats-included)
+  - [Configuration (Admin only)](#configuration-admin-only)
+  - [Using S3 Storage](#using-s3-storage)
+  - [Supported Operations on S3](#supported-operations-on-s3)
+  - [Notes](#notes)
+- [Dev mode](#dev-mode)
+- [Deployment 🚀](#deployment-)
+  - [Docker](#docker)
+  - [PM2](#pm2)
+- [Versioning](#versioning)
+- [Changelog](#changelog)
+- [Latest Changelog](#latest-changelog)
+
 
 ## Features
 - Read/write file operations (upload, download, create, rename, delete/restore, copy/paste).
 - Drag-and-drop upload across the app surface.
-- Batch downloads as zip or tar.gz, with large zips switching to store mode.
 - Search, filters, sorting, pagination, and a recent view for large directories.
 - Image preview popup and text preview (first 200 KB).
 - Grid/thumbnail view toggle for browsing files and folders.
@@ -100,12 +122,20 @@ If you are using `ADMIN_PASSWORD`, the default username is `admin` (or leave the
 
 ## S3 Integration ☁️
 
+![S3 Configuration](public/brofm-s3.png)
+
 Bro File Manager supports managing files on S3-compatible storage services including:
 - **AWS S3** - Amazon Simple Storage Service
 - **Cloudflare R2** - Zero-egress object storage
 - **Backblaze B2** - Cloud storage with S3-compatible API
 - **MinIO** - Self-hosted object storage
 - Any other S3-compatible service
+
+### What’s included
+- Storage mode switcher for Local Files and S3 Storage.
+- Admin-only S3 configuration management with presets and connection testing.
+- Session-based connections so each user can connect to a different S3 config.
+- Full file operations on S3: list, upload, download, edit, delete, move, copy, and mkdir.
 
 ### Configuration (Admin only)
 
@@ -204,3 +234,14 @@ See `CHANGELOG.md` for release notes.
 Build with ❤️ from Jogja & Jetorbit
 
 Sponsored by [Jetorbit.com](https://jetorbit.com)
+
+## Latest Changelog
+
+### [0.3.0] - 2026-01-26
+#### Added
+- **S3 Integration** - Support for AWS S3, Cloudflare R2, Backblaze B2, MinIO, and other S3-compatible services
+  - Storage mode switcher to toggle between Local Files and S3 Storage
+  - Admin-only S3 configuration management with connection testing
+  - Session-based S3 connections (each user can connect to different S3 configs)
+  - Quick setup presets for common S3-compatible services
+  - All file operations (list, upload, download, edit, delete, move, copy, mkdir) work with S3
