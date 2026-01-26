@@ -1227,7 +1227,13 @@ app.post("/api/s3/connect", async (c) => {
 
   const connectedConfigs = await getConnectedS3Configs(sessionKey);
   const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
-  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
+  return c.json({
+    connected: safeConfigs.length > 0,
+    configs: safeConfigs,
+    maxConnections: S3_MAX_CONNECTIONS,
+    user: session.user,
+    role: session.role,
+  });
 });
 
 app.post("/api/s3/disconnect", async (c) => {
@@ -1239,7 +1245,13 @@ app.post("/api/s3/disconnect", async (c) => {
 
   const connectedConfigs = await getConnectedS3Configs(session.user + ":" + session.role);
   const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
-  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
+  return c.json({
+    connected: safeConfigs.length > 0,
+    configs: safeConfigs,
+    maxConnections: S3_MAX_CONNECTIONS,
+    user: session.user,
+    role: session.role,
+  });
 });
 
 app.get("/api/s3/current", async (c) => {
@@ -1247,14 +1259,26 @@ app.get("/api/s3/current", async (c) => {
 
   const connectedConfigs = await getConnectedS3Configs(session.user + ":" + session.role);
   const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
-  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
+  return c.json({
+    connected: safeConfigs.length > 0,
+    configs: safeConfigs,
+    maxConnections: S3_MAX_CONNECTIONS,
+    user: session.user,
+    role: session.role,
+  });
 });
 
 app.get("/api/s3/connections", async (c) => {
   const session = c.get("session");
   const connectedConfigs = await getConnectedS3Configs(session.user + ":" + session.role);
   const safeConfigs = connectedConfigs.map(({ secretAccessKey: _, ...rest }) => rest);
-  return c.json({ connected: safeConfigs.length > 0, configs: safeConfigs, maxConnections: S3_MAX_CONNECTIONS });
+  return c.json({
+    connected: safeConfigs.length > 0,
+    configs: safeConfigs,
+    maxConnections: S3_MAX_CONNECTIONS,
+    user: session.user,
+    role: session.role,
+  });
 });
 
 // ============================================================================
@@ -1294,7 +1318,7 @@ app.get("/api/s3/list", async (c) => {
 
   try {
     const { entries, total } = await adapter.list(path, { limit, offset });
-    return c.json({ entries, total });
+    return c.json({ entries, total, user: session.user, role: session.role });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }

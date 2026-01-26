@@ -29,6 +29,11 @@
 - Tightened saved config action row layout in S3 settings cards.
 - Moved delete control to the card header for saved configs.
 - Refreshes S3 connection state when configs are deactivated to avoid broken views.
+- Fallback to another connected S3 or local when the active config is deactivated.
+- Keep users on S3 settings page when deactivating the active config from settings.
+- Force settings route and local storage mode when active S3 config is deactivated in settings.
+- Include user/role in S3 list responses so settings access doesn't disappear in S3-only flows.
+- Hydrate username/role from S3 connection refreshes so settings access stays stable after deactivation.
 
 ---
 

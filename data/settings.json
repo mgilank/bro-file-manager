@@ -9,7 +9,7 @@
       "bucket": "brobucket",
       "prefix": "",
       "id": "3673ae5d-089f-4e3c-a342-0ea7fcbe280b",
-      "active": true
+      "active": false
     },
     {
       "name": "AWS is3",

@@ -291,6 +291,13 @@ export default function App() {
           setEntries(mappedEntries);
           setPath(targetPath);
           setS3Paths((prev) => ({ ...prev, [activeConfigId]: targetPath }));
+          if (data.user) {
+            setUsername(data.user);
+          }
+          if (data.role) {
+            setUserRole(data.role);
+          }
+          setAuth("authed");
           // Calculate parent path for S3
           const segments = targetPath.split("/").filter(Boolean);
           segments.pop();
@@ -1256,11 +1263,22 @@ export default function App() {
     sortMode !== "default" ||
     contentSearch;
 
-  const showS3SettingsPage = auth === "authed" && userRole === "admin" && route === "s3-settings";
+  const showS3SettingsPage =
+    auth === "authed" &&
+    userRole === "admin" &&
+    (route === "s3-settings" ||
+      (typeof window !== "undefined" && window.location.pathname === "/s3-settings"));
 
   const refreshS3Connections = useCallback(async () => {
     try {
       const response = await s3Api.s3ListConnections();
+      if (response?.user) {
+        setUsername(response.user);
+      }
+      if (response?.role) {
+        setUserRole(response.role);
+        setAuth("authed");
+      }
       setS3Connection({
         connected: Boolean(response?.connected),
         configs: response?.configs ?? [],
@@ -1367,22 +1385,55 @@ export default function App() {
     if (stillConnected) {
       return;
     }
+    const inSettings =
+      route === "s3-settings" ||
+      (typeof window !== "undefined" && window.location.pathname === "/s3-settings");
+    const fallbackConfigId = s3Connection.configs[0]?.id ?? null;
     setActiveS3ConfigId(null);
     setRouteS3ConfigId(null);
     setEntries([]);
     setPath("/");
     setParent(null);
-    if (route === "s3") {
-      setPendingS3Connect(true);
-      setShowS3Connection(true);
-      pushToast("Active S3 config was deactivated. Select another connection.", "error");
+
+    if (inSettings) {
+      setPendingS3Connect(false);
+      setShowS3Connection(false);
+      setStorageMode("local");
+      setRoute("s3-settings");
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("storageMode", "local");
+      }
+      if (typeof window !== "undefined" && window.location.pathname !== "/s3-settings") {
+        window.history.replaceState(null, "", "/s3-settings");
+      }
+      pushToast("Active S3 config was deactivated.", "info");
       return;
     }
-    if (storageMode === "s3") {
-      setStorageMode("local");
+
+    if (route === "s3") {
+      if (fallbackConfigId) {
+        switchToS3(fallbackConfigId);
+        pushToast("Active S3 config was deactivated. Switched to another connection.", "info");
+        return;
+      }
+      switchToLocal();
+      pushToast("Active S3 config was deactivated. Switched to local files.", "error");
+      return;
     }
+
+    if (storageMode === "s3") {
+      setPendingS3Connect(false);
+      setShowS3Connection(false);
+      if (route === "s3-settings") {
+        setStorageMode("local");
+        void loadPath("/", "local");
+      } else {
+        switchToLocal();
+      }
+    }
+
     pushToast("Active S3 config was deactivated.", "info");
-  }, [activeS3ConfigId, s3Connection.configs, route, storageMode, pushToast]);
+  }, [activeS3ConfigId, s3Connection.configs, route, storageMode, pushToast, switchToLocal, switchToS3]);
 
   useKeyboardShortcuts({
     enabled: SHORTCUTS_ENABLED && !showS3SettingsPage,
